@@ -2,9 +2,9 @@ name: Update RLUSD hourly data
 
 on:
   schedule:
-    # 每 10 分钟一班（GitHub 定时器会随机丢班次，6 班/小时互为兜底；
+    # 每 30 分钟一班（GitHub 定时器偶发丢班，双班次互为兜底；
     # 脚本幂等且会补齐缺失小时点，重复运行无副作用）
-    - cron: "4,14,24,34,44,54 * * * *"   # UTC
+    - cron: "8,38 * * * *"   # UTC
   workflow_dispatch:       # 允许手动触发
 
 permissions:
