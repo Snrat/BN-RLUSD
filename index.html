@@ -107,7 +107,7 @@
   </div>
 
   <div class="panel">
-    <h2>预估 APR</h2>
+    <h2>预估 APR（自第一周结算 07-24 08:00 起）</h2>
     <div class="chart-box"><canvas id="chartApr"></canvas></div>
     <div class="note" id="params-note"></div>
   </div>
@@ -179,12 +179,16 @@ function render(data) {
       y: { ...common.scales.y, ticks: { callback: v => (v / 1e6).toFixed(0) + 'M' } } } },
   };
 
+  // APR 预估只从第一周结算后开始显示（之前已是实际值，预估无意义）
+  const aprHours = hours.filter(h => h.t >= data.params.week1_window[1]);
+  const aprLabels = aprHours.map(h => toUTC8(h.t));
+
   const aprCfg = {
     type: 'line',
-    data: { labels, datasets: [
-      { label: '乐观 APR', data: hours.map(h => h.apr_optimistic), borderColor: '#22c55e' },
-      { label: '中间 APR', data: hours.map(h => h.apr_mid), borderColor: '#3b82f6' },
-      { label: '悲观 APR', data: hours.map(h => h.apr_pessimistic), borderColor: '#ef4444' },
+    data: { labels: aprLabels, datasets: [
+      { label: '乐观 APR', data: aprHours.map(h => h.apr_optimistic), borderColor: '#22c55e' },
+      { label: '中间 APR', data: aprHours.map(h => h.apr_mid), borderColor: '#3b82f6' },
+      { label: '悲观 APR', data: aprHours.map(h => h.apr_pessimistic), borderColor: '#ef4444' },
     ]},
     options: { ...common, scales: { ...common.scales,
       y: { ...common.scales.y, ticks: { callback: v => v + '%' } } },
