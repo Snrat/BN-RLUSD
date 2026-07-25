@@ -63,7 +63,8 @@
     border-radius: 14px; padding: 14px 16px; box-shadow: var(--shadow);
     backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
   }
-  .card .k { font-size: 12px; color: var(--muted); margin-bottom: 6px; font-weight: 500; }
+  .card .k { font-size: 12px; color: var(--muted); margin-bottom: 6px; font-weight: 500;
+             display: flex; align-items: center; gap: 6px; }
   .card .v {
     font-size: 22px; font-weight: 750; letter-spacing: -0.01em;
     font-variant-numeric: tabular-nums;
@@ -73,6 +74,16 @@
     -webkit-background-clip: text; background-clip: text; color: transparent;
   }
   .opt .v { color: #22c55e; } .mid .v { color: #3b82f6; } .pes .v { color: #ef4444; }
+  .live-badge {
+    display: none; align-items: center; gap: 4px;
+    font-size: 10px; font-weight: 700; color: #22c55e; letter-spacing: .05em;
+  }
+  .live-badge::before {
+    content: ""; width: 6px; height: 6px; border-radius: 50%; background: #22c55e;
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+  .live-badge.on { display: inline-flex; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .25; } }
 
   .panel {
     background: var(--panel); border: 1px solid var(--border);
@@ -90,15 +101,15 @@
 <div class="wrap">
   <header>
     <h1><span class="dot"></span>币安 RLUSD 实时统计 & APR 预估</h1>
-    <div class="sub">自 2026-07-14 08:00 (UTC+8) 起每小时快照 · 数据每小时更新 · 页面每 10 分钟自动刷新</div>
+    <div class="sub">历史曲线每小时更新 · 头部数值由浏览器直连链上节点实时获取 · 每 10 分钟自动刷新</div>
   </header>
 
   <div class="cards">
-    <div class="card hero"><div class="k">RLUSD 总量</div><div class="v" id="c-total">–</div></div>
+    <div class="card hero"><div class="k">RLUSD 总量<span class="live-badge" id="badge-live">LIVE</span></div><div class="v" id="c-total">–</div></div>
     <div class="card opt"><div class="k">乐观 APR（利用率恒定）</div><div class="v" id="c-opt">–</div></div>
     <div class="card mid"><div class="k">中间 APR</div><div class="v" id="c-mid">–</div></div>
     <div class="card pes"><div class="k">悲观 APR（闲置恒定）</div><div class="v" id="c-pes">–</div></div>
-    <div class="card"><div class="k">数据更新至</div><div class="v" id="c-time" style="font-size:16px">–</div></div>
+    <div class="card"><div class="k">实时数据获取于</div><div class="v" id="c-time" style="font-size:16px">–</div></div>
   </div>
 
   <div class="panel">
@@ -125,27 +136,89 @@ const toUTC8 = t => {
 const darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
 const cssVar = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
-let chartTotal = null, chartApr = null, cached = null;
+// ---- 浏览器直连链上节点（均已验证 CORS）----
+const LIVE = {
+  ethRpcs: ['https://rpc.mevblocker.io', 'https://eth-mainnet.public.blastapi.io'],
+  xrpRpcs: ['https://xrplcluster.com'],
+  contract: '0x8292bb45bf1ee4d140127049757c2e0ff06317ed',
+  ethAddrs: [
+    '0x28c6c06298d514db089934071355e5743bf21d60',
+    '0xdfd5293d8e347dfe59e90efd55b2956a1343963d',
+    '0x21a31ee1afc51d94c2efccaa2092ad1028285549',
+    '0x4ed6cf63bd9c009d247ee51224fc1c7041f517f1',
+    '0x98adef6f2ac8572ec48965509d69a8dd5e8bba9d',
+  ],
+  xrpAddrs: ['rDAE53VfMvftPB4ogpWGWvzkQxfht6JPxr', 'rQUp2PKzH3vCtKs5H9tsPPE1rTsN6fhjqn'],
+  xrpIssuer: 'rMxCKbEDwqr76QuheSUMdEGf4B9xJ8m5De',
+};
+
+async function fetchLiveTotal() {
+  const calls = LIVE.ethAddrs.map((a, i) => ({
+    jsonrpc: '2.0', id: i, method: 'eth_call',
+    params: [{ to: LIVE.contract, data: '0x70a08231' + a.slice(2).padStart(64, '0') }, 'latest'],
+  }));
+  let eth = null;
+  for (const url of LIVE.ethRpcs) {
+    try {
+      const r = await fetch(url, { method: 'POST',
+        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(calls) });
+      const arr = await r.json();
+      arr.sort((x, y) => x.id - y.id);
+      eth = arr.reduce((s, x) => s + Number(BigInt(x.result)) / 1e18, 0);
+      break;
+    } catch (e) { /* 换下一个节点 */ }
+  }
+  if (eth == null) throw new Error('ETH 节点均不可用');
+
+  let xrp = 0;
+  for (const a of LIVE.xrpAddrs) {
+    const r = await fetch(LIVE.xrpRpcs[0], { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ method: 'account_lines',
+        params: [{ account: a, peer: LIVE.xrpIssuer, ledger_index: 'validated', limit: 200 }] }) });
+    const d = await r.json();
+    xrp += (d.result.lines || []).reduce((s, l) => s + parseFloat(l.balance), 0);
+  }
+  return { total: eth + xrp, at: new Date().toISOString() };
+}
+
+let chartTotal = null, chartApr = null, cached = null, live = null;
 
 function themeColors() {
   return { text: cssVar('--muted'), grid: cssVar('--grid'), purple: cssVar('--purple'),
            purpleFill: cssVar('--purple-fill') };
 }
 
-function render(data) {
+function liveAprs(total, p) {
+  const pool = p.annual_reward_pool;
+  const opt = pool / (total * p.week1_utilization) * 100;
+  const utilizedPes = total - p.week1_unused;
+  const pes = utilizedPes > 0 ? pool / utilizedPes * 100 : null;
+  return { opt, pes, mid: pes == null ? null : (opt + pes) / 2 };
+}
+
+function render(data, liveData) {
   const hours = data.hours.filter(h => h.total != null);
-  const labels = hours.map(h => toUTC8(h.t));
-  const last = hours[hours.length - 1];
-  const c = themeColors();
-
-  document.getElementById('c-total').textContent = fmtNum(last.total);
-  document.getElementById('c-opt').textContent = fmtNum(last.apr_optimistic, 2) + '%';
-  document.getElementById('c-mid').textContent = fmtNum(last.apr_mid, 2) + '%';
-  document.getElementById('c-pes').textContent = last.apr_pessimistic == null ? '–'
-    : fmtNum(last.apr_pessimistic, 2) + '%';
-  document.getElementById('c-time').textContent = toUTC8(last.t) + ' (UTC+8)';
-
   const p = data.params;
+  const c = themeColors();
+  const last = hours[hours.length - 1];
+
+  // APR 预估只从第一周结算后开始显示
+  const aprHours = hours.filter(h => h.t >= p.week1_window[1]);
+
+  // 头部卡片：优先用实时值
+  let head = { total: last.total, aprs: liveAprs(last.total, p), time: toUTC8(last.t) + ' (UTC+8 小时数据)' };
+  if (liveData) {
+    head = { total: liveData.total, aprs: liveAprs(liveData.total, p),
+             time: toUTC8(liveData.at) + ' (UTC+8 实时)' };
+  }
+  document.getElementById('badge-live').classList.toggle('on', !!liveData);
+  document.getElementById('c-total').textContent = fmtNum(head.total);
+  document.getElementById('c-opt').textContent = fmtNum(head.aprs.opt, 2) + '%';
+  document.getElementById('c-mid').textContent = fmtNum(head.aprs.mid, 2) + '%';
+  document.getElementById('c-pes').textContent = head.aprs.pes == null ? '–' : fmtNum(head.aprs.pes, 2) + '%';
+  document.getElementById('c-time').textContent = head.time;
+
   document.getElementById('params-note').textContent =
     `模型：周奖励固定 ${fmtNum(p.weekly_reward)} RLUSD（年化池 ${fmtNum(p.annual_reward_pool)}），` +
     `APR = 年化池 ÷ 利用金额。第一周（${p.week1_window[0].slice(0,10)} ~ ${p.week1_window[1].slice(0,10)}，` +
@@ -155,6 +228,20 @@ function render(data) {
     `乐观 = 利用率恒定 ${(p.week1_utilization * 100).toFixed(2)}%；` +
     `悲观 = 未利用资金恒定为第一周水平，其余资金全部参与瓜分。` +
     `注：当总存款低于第一周未利用资金时，悲观口径下利用金额 ≤ 0，模型失效，曲线留空。`;
+
+  // 曲线数据；实时点追加在末尾（大圆点标记）
+  const tLabels = hours.map(h => toUTC8(h.t));
+  const tVals = hours.map(h => h.total);
+  const aLabels = aprHours.map(h => toUTC8(h.t));
+  const aOpt = aprHours.map(h => h.apr_optimistic);
+  const aMid = aprHours.map(h => h.apr_mid);
+  const aPes = aprHours.map(h => h.apr_pessimistic);
+  const livePoint = ctx => liveData && ctx.dataIndex === ctx.dataset.data.length - 1 ? 4 : 0;
+  if (liveData) {
+    const lt = toUTC8(liveData.at);
+    tLabels.push(lt); tVals.push(liveData.total);
+    aLabels.push(lt); aOpt.push(head.aprs.opt); aMid.push(head.aprs.mid); aPes.push(head.aprs.pes);
+  }
 
   Chart.defaults.color = c.text;
   Chart.defaults.borderColor = c.grid;
@@ -171,24 +258,21 @@ function render(data) {
 
   const totalCfg = {
     type: 'line',
-    data: { labels, datasets: [{
-      label: 'RLUSD 总量', data: hours.map(h => h.total),
+    data: { labels: tLabels, datasets: [{
+      label: 'RLUSD 总量', data: tVals,
       borderColor: c.purple, backgroundColor: c.purpleFill, fill: true,
+      pointRadius: livePoint, pointBackgroundColor: c.purple,
     }]},
     options: { ...common, scales: { ...common.scales,
       y: { ...common.scales.y, ticks: { callback: v => (v / 1e6).toFixed(0) + 'M' } } } },
   };
 
-  // APR 预估只从第一周结算后开始显示（之前已是实际值，预估无意义）
-  const aprHours = hours.filter(h => h.t >= data.params.week1_window[1]);
-  const aprLabels = aprHours.map(h => toUTC8(h.t));
-
   const aprCfg = {
     type: 'line',
-    data: { labels: aprLabels, datasets: [
-      { label: '乐观 APR', data: aprHours.map(h => h.apr_optimistic), borderColor: '#22c55e' },
-      { label: '中间 APR', data: aprHours.map(h => h.apr_mid), borderColor: '#3b82f6' },
-      { label: '悲观 APR', data: aprHours.map(h => h.apr_pessimistic), borderColor: '#ef4444' },
+    data: { labels: aLabels, datasets: [
+      { label: '乐观 APR', data: aOpt, borderColor: '#22c55e', pointRadius: livePoint, pointBackgroundColor: '#22c55e' },
+      { label: '中间 APR', data: aMid, borderColor: '#3b82f6', pointRadius: livePoint, pointBackgroundColor: '#3b82f6' },
+      { label: '悲观 APR', data: aPes, borderColor: '#ef4444', pointRadius: livePoint, pointBackgroundColor: '#ef4444' },
     ]},
     options: { ...common, scales: { ...common.scales,
       y: { ...common.scales.y, ticks: { callback: v => v + '%' } } },
@@ -206,14 +290,22 @@ async function load() {
   try {
     const resp = await fetch('data.json?_=' + Date.now(), { cache: 'no-store' });
     cached = await resp.json();
-    render(cached);
-    status.textContent = '上次页面刷新: ' + toUTC8(new Date().toISOString()) + ' (UTC+8)';
   } catch (e) {
-    status.textContent = '数据加载失败: ' + e.message;
+    status.textContent = '历史数据加载失败: ' + e.message;
+    return;
   }
+  try {
+    live = await fetchLiveTotal();
+    status.textContent = '曲线更新至 ' + toUTC8(cached.hours[cached.hours.length - 1].t) +
+      ' (UTC+8) · 实时值于 ' + toUTC8(live.at) + ' 从链上获取';
+  } catch (e) {
+    live = null;
+    status.textContent = '实时链上获取失败（' + e.message + '），显示最近小时数据';
+  }
+  render(cached, live);
 }
 
-darkQuery.addEventListener('change', () => { if (cached) render(cached); });
+darkQuery.addEventListener('change', () => { if (cached) render(cached, live); });
 load();
 setInterval(load, 10 * 60 * 1000);
 </script>
