@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>币安 RLUSD 实时统计 & APR 预估</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+         background: #f6f7f9; color: #1f2329; padding: 20px; }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  .sub { color: #6b7280; font-size: 13px; margin-bottom: 16px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+           gap: 10px; margin-bottom: 16px; }
+  .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px 14px; }
+  .card .k { font-size: 12px; color: #6b7280; margin-bottom: 4px; }
+  .card .v { font-size: 20px; font-weight: 700; }
+  .opt .v { color: #16a34a; } .mid .v { color: #2563eb; } .pes .v { color: #dc2626; }
+  .panel { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
+           padding: 14px; margin-bottom: 16px; }
+  .panel h2 { font-size: 15px; margin-bottom: 10px; }
+  .chart-box { position: relative; height: 340px; }
+  .note { font-size: 12px; color: #6b7280; line-height: 1.7; }
+  #status { font-size: 12px; color: #9ca3af; margin-top: 6px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>币安 RLUSD 总量 & 预估 APR（每小时更新）</h1>
+  <div class="sub">数据自 2026-07-14 08:00 (UTC+8) 起每小时快照 · 页面每 10 分钟自动刷新</div>
+
+  <div class="cards">
+    <div class="card"><div class="k">RLUSD 总量（最新小时）</div><div class="v" id="c-total">–</div></div>
+    <div class="card opt"><div class="k">乐观 APR（利用率恒定）</div><div class="v" id="c-opt">–</div></div>
+    <div class="card mid"><div class="k">中间 APR</div><div class="v" id="c-mid">–</div></div>
+    <div class="card pes"><div class="k">悲观 APR（闲置恒定）</div><div class="v" id="c-pes">–</div></div>
+    <div class="card"><div class="k">数据更新至</div><div class="v" id="c-time" style="font-size:15px">–</div></div>
+  </div>
+
+  <div class="panel">
+    <h2>RLUSD 总量（ETH + XRP，不区分链和地址）</h2>
+    <div class="chart-box"><canvas id="chartTotal"></canvas></div>
+  </div>
+
+  <div class="panel">
+    <h2>预估 APR 实时预测（按最新小时余额计算）</h2>
+    <div class="chart-box"><canvas id="chartApr"></canvas></div>
+    <div class="note" id="params-note"></div>
+  </div>
+
+  <div id="status"></div>
+</div>
+
+<script>
+const fmtNum = (n, d = 0) => n == null ? '–' :
+  n.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+const toUTC8 = t => {  // "2026-07-25T13:00:00Z" -> "07-25 21:00"
+  const d = new Date(new Date(t).getTime() + 8 * 3600e3);
+  return d.toISOString().slice(5, 16).replace('T', ' ');
+};
+
+let chartTotal = null, chartApr = null;
+
+async function load() {
+  const status = document.getElementById('status');
+  try {
+    const resp = await fetch('data.json?_=' + Date.now(), { cache: 'no-store' });
+    const data = await resp.json();
+    const hours = data.hours.filter(h => h.total != null);
+    const labels = hours.map(h => toUTC8(h.t));
+    const last = hours[hours.length - 1];
+
+    document.getElementById('c-total').textContent = fmtNum(last.total);
+    document.getElementById('c-opt').textContent = fmtNum(last.apr_optimistic, 2) + '%';
+    document.getElementById('c-mid').textContent = fmtNum(last.apr_mid, 2) + '%';
+    document.getElementById('c-pes').textContent = last.apr_pessimistic == null ? '–'
+      : fmtNum(last.apr_pessimistic, 2) + '%';
+    document.getElementById('c-time').textContent = toUTC8(last.t) + ' (UTC+8)';
+
+    const p = data.params;
+    document.getElementById('params-note').textContent =
+      `模型：周奖励固定 ${fmtNum(p.weekly_reward)} RLUSD（年化池 ${fmtNum(p.annual_reward_pool)}），` +
+      `APR = 年化池 ÷ 利用金额。第一周（${p.week1_window[0].slice(0,10)} ~ ${p.week1_window[1].slice(0,10)}，` +
+      `${p.week1_snapshot_hours} 个小时快照等权平均）：日均存款 ${fmtNum(p.week1_avg_deposit)}，` +
+      `利用金额 ${fmtNum(p.week1_utilized)}，利用率 ${(p.week1_utilization * 100).toFixed(2)}%，` +
+      `未利用 ${fmtNum(p.week1_unused)}。` +
+      `乐观 = 利用率恒定 ${(p.week1_utilization * 100).toFixed(2)}%；` +
+      `悲观 = 未利用资金恒定为第一周水平，其余资金全部参与瓜分。` +
+      `注：当总存款低于第一周未利用资金时，悲观口径下利用金额 ≤ 0，模型失效，曲线留空。`;
+
+    const common = {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { labels: { boxWidth: 14 } } },
+      scales: { x: { ticks: { maxTicksLimit: 12, maxRotation: 0 }, grid: { display: false } } },
+      elements: { point: { radius: 0 }, line: { borderWidth: 2 } },
+    };
+
+    const totalCfg = {
+      type: 'line',
+      data: { labels, datasets: [{
+        label: 'RLUSD 总量', data: hours.map(h => h.total),
+        borderColor: '#7c3aed', backgroundColor: 'rgba(124,58,237,0.08)', fill: true,
+      }]},
+      options: { ...common, scales: { ...common.scales,
+        y: { ticks: { callback: v => (v / 1e6).toFixed(0) + 'M' } } } },
+    };
+
+    const aprCfg = {
+      type: 'line',
+      data: { labels, datasets: [
+        { label: '乐观 APR', data: hours.map(h => h.apr_optimistic), borderColor: '#16a34a' },
+        { label: '中间 APR', data: hours.map(h => h.apr_mid), borderColor: '#2563eb' },
+        { label: '悲观 APR', data: hours.map(h => h.apr_pessimistic), borderColor: '#dc2626' },
+      ]},
+      options: { ...common, scales: { ...common.scales,
+        y: { ticks: { callback: v => v + '%' } } },
+        plugins: { ...common.plugins,
+          tooltip: { callbacks: { label: c => ` ${c.dataset.label}: ${fmtNum(c.parsed.y, 2)}%` } } } },
+    };
+
+    if (chartTotal) { chartTotal.destroy(); chartApr.destroy(); }
+    chartTotal = new Chart(document.getElementById('chartTotal'), totalCfg);
+    chartApr = new Chart(document.getElementById('chartApr'), aprCfg);
+    status.textContent = '上次页面刷新: ' + toUTC8(new Date().toISOString()) + ' (UTC+8)';
+  } catch (e) {
+    status.textContent = '数据加载失败: ' + e.message;
+  }
+}
+
+load();
+setInterval(load, 10 * 60 * 1000);
+</script>
+</body>
+</html>
