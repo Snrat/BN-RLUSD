@@ -171,12 +171,23 @@ function render(data) {
 
   const totalCfg = {
     type: 'line',
-    data: { labels, datasets: [{
-      label: 'RLUSD 总量', data: hours.map(h => h.total),
-      borderColor: c.purple, backgroundColor: c.purpleFill, fill: true,
-    }]},
-    options: { ...common, scales: { ...common.scales,
-      y: { ...common.scales.y, ticks: { callback: v => (v / 1e6).toFixed(0) + 'M' } } } },
+    data: { labels, datasets: [
+      { label: 'ETH 链', data: hours.map(h => h.eth),
+        borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,0.35)',
+        fill: true, stack: 'chain' },
+      { label: 'XRP 链', data: hours.map(h => h.xrp),
+        borderColor: '#14b8a6', backgroundColor: 'rgba(20,184,166,0.35)',
+        fill: true, stack: 'chain' },
+    ]},
+    options: { ...common,
+      scales: { ...common.scales,
+        y: { ...common.scales.y, stacked: true,
+             ticks: { callback: v => (v / 1e6).toFixed(0) + 'M' } } },
+      plugins: { ...common.plugins,
+        tooltip: { callbacks: {
+          label: ctx => ` ${ctx.dataset.label}: ${fmtNum(ctx.parsed.y)}`,
+          footer: items => ` 总量: ${fmtNum(items.reduce((s, i) => s + i.parsed.y, 0))}`,
+        } } } },
   };
 
   // APR 预估只从第一周结算后开始显示（之前已是实际值，预估无意义）
