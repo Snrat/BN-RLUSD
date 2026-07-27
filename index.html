@@ -4,150 +4,185 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>币安 RLUSD 实时统计 & APR 预估</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/inter@5.1.0/index.min.css">
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
 <style>
   :root {
-    --bg: #eef1f8;
-    --panel: rgba(255, 255, 255, 0.66);
-    --border: rgba(255, 255, 255, 0.7);
-    --text: #0f172a;
-    --muted: #64748b;
-    --faint: #94a3b8;
-    --shadow: 0 2px 6px rgba(15,23,42,.05), 0 16px 40px rgba(15,23,42,.08);
-    --grid: rgba(100, 116, 139, 0.14);
-    --tooltip-bg: rgba(255, 255, 255, 0.92);
-    --tooltip-text: #0f172a;
+    --bg: #f6f7f9;
+    --panel: #ffffff;
+    --border: #e8eaef;
+    --text: #111827;
+    --muted: #6b7280;
+    --faint: #9ca3af;
+    --shadow: 0 1px 2px rgba(16,24,40,.04), 0 4px 16px rgba(16,24,40,.05);
+    --grid: rgba(107, 114, 128, 0.12);
+    --tooltip-bg: rgba(255, 255, 255, 0.96);
+    --tooltip-text: #111827;
     --purple: #7c3aed;
-    --zoom-fill: rgba(124, 58, 237, 0.15);
+    --blue: #1677ff;
+    --zoom-fill: rgba(22, 119, 255, 0.10);
+    --seg-bg: #eef0f4;
+    --up: #16a34a; --down: #dc2626;
+    --aurora-op: .28;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #070a12;
-      --panel: rgba(17, 24, 39, 0.55);
-      --border: rgba(148, 163, 184, 0.12);
-      --text: #e2e8f0;
-      --muted: #94a3b8;
-      --faint: #64748b;
-      --shadow: 0 2px 6px rgba(0,0,0,.35), 0 16px 40px rgba(0,0,0,.45);
-      --grid: rgba(148, 163, 184, 0.10);
-      --tooltip-bg: rgba(15, 23, 42, 0.92);
-      --tooltip-text: #e2e8f0;
+      --bg: #0a0c11;
+      --panel: #12151d;
+      --border: #1f2430;
+      --text: #e5e9f0;
+      --muted: #8b93a5;
+      --faint: #5b6373;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
+      --grid: rgba(139, 147, 165, 0.10);
+      --tooltip-bg: rgba(18, 21, 29, 0.96);
+      --tooltip-text: #e5e9f0;
       --purple: #a78bfa;
-      --zoom-fill: rgba(167, 139, 250, 0.18);
+      --blue: #4d94ff;
+      --zoom-fill: rgba(77, 148, 255, 0.14);
+      --seg-bg: #1a1e29;
+      --up: #34d399; --down: #f87171;
+      --aurora-op: .16;
     }
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, "PingFang SC",
+    font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
                  "Microsoft YaHei", sans-serif;
-    background: var(--bg);
-    color: var(--text);
-    padding: 32px 20px 48px;
-    min-height: 100vh;
-    overflow-x: hidden;
-    transition: background .4s, color .4s;
+    background: var(--bg); color: var(--text);
+    min-height: 100vh; overflow-x: hidden;
+    transition: background .3s, color .3s;
+    -webkit-font-smoothing: antialiased;
   }
-  /* ---- 极光背景 ---- */
-  .aurora { position: fixed; inset: 0; z-index: -1; overflow: hidden; }
-  .aurora span {
-    position: absolute; border-radius: 50%; filter: blur(90px); opacity: .5;
-    animation: drift 26s ease-in-out infinite alternate;
-  }
-  .aurora span:nth-child(1) {
-    width: 46vw; height: 46vw; left: -12vw; top: -14vw;
-    background: radial-gradient(circle, rgba(124,58,237,.35), transparent 65%);
-  }
-  .aurora span:nth-child(2) {
-    width: 40vw; height: 40vw; right: -10vw; top: 6vh;
-    background: radial-gradient(circle, rgba(37,99,235,.30), transparent 65%);
-    animation-delay: -8s;
-  }
-  .aurora span:nth-child(3) {
-    width: 38vw; height: 38vw; left: 26vw; bottom: -18vw;
-    background: radial-gradient(circle, rgba(20,184,166,.26), transparent 65%);
-    animation-delay: -16s;
-  }
-  @keyframes drift {
-    from { transform: translate(0, 0) scale(1); }
-    to   { transform: translate(6vw, 4vh) scale(1.15); }
-  }
-  @media (prefers-color-scheme: dark) { .aurora span { opacity: .32; } }
+  .aurora { position: fixed; inset: 0; z-index: -1; overflow: hidden; opacity: var(--aurora-op); }
+  .aurora span { position: absolute; border-radius: 50%; filter: blur(100px);
+                 animation: drift 30s ease-in-out infinite alternate; }
+  .aurora span:nth-child(1) { width: 44vw; height: 44vw; left: -14vw; top: -16vw;
+    background: radial-gradient(circle, rgba(124,58,237,.5), transparent 65%); }
+  .aurora span:nth-child(2) { width: 38vw; height: 38vw; right: -12vw; top: 10vh;
+    background: radial-gradient(circle, rgba(22,119,255,.45), transparent 65%); animation-delay: -10s; }
+  .aurora span:nth-child(3) { width: 36vw; height: 36vw; left: 30vw; bottom: -20vw;
+    background: radial-gradient(circle, rgba(20,184,166,.4), transparent 65%); animation-delay: -20s; }
+  @keyframes drift { from { transform: translate(0,0) scale(1); } to { transform: translate(5vw,4vh) scale(1.12); } }
 
-  .wrap { max-width: 1100px; margin: 0 auto; }
-  header { margin-bottom: 24px; animation: rise .6s ease both; }
-  h1 {
-    font-size: 23px; font-weight: 750; letter-spacing: -0.02em;
-    display: flex; align-items: center; gap: 10px;
+  /* ---- 吸顶导航 ---- */
+  .topbar {
+    position: sticky; top: 0; z-index: 50;
+    backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    background: color-mix(in srgb, var(--bg) 78%, transparent);
+    border-bottom: 1px solid var(--border);
   }
-  h1 .dot {
-    width: 10px; height: 10px; border-radius: 50%;
-    background: linear-gradient(135deg, #7c3aed, #2563eb);
-    box-shadow: 0 0 14px rgba(124, 58, 237, .7);
+  .topbar-inner {
+    max-width: 1120px; margin: 0 auto; padding: 14px 20px;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
   }
-  .sub { color: var(--muted); font-size: 13px; margin-top: 6px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 16px;
+           letter-spacing: -0.01em; }
+  .brand .logo {
+    width: 26px; height: 26px; border-radius: 8px;
+    background: linear-gradient(135deg, #7c3aed, #1677ff);
+    box-shadow: 0 2px 8px rgba(124,58,237,.4);
+    display: grid; place-items: center; color: #fff; font-size: 13px; font-weight: 800;
+  }
+  .top-status { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 7px; }
+  .top-status .pulse {
+    width: 7px; height: 7px; border-radius: 50%; background: var(--up);
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(22,163,74,.4); } 50% { box-shadow: 0 0 0 5px rgba(22,163,74,0); } }
 
-  .cards {
-    display: grid; gap: 14px; margin-bottom: 18px;
-    grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
-  }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 26px 20px 48px; }
+  .pagehead { margin-bottom: 20px; animation: rise .5s ease both; }
+  .pagehead h1 { font-size: 21px; font-weight: 750; letter-spacing: -0.02em; }
+  .pagehead .sub { color: var(--muted); font-size: 13px; margin-top: 5px; }
+
+  /* ---- KPI 卡片 ---- */
+  .cards { display: grid; gap: 14px; margin-bottom: 18px;
+           grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
   .card {
     background: var(--panel); border: 1px solid var(--border);
-    border-radius: 16px; padding: 16px 18px; box-shadow: var(--shadow);
-    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
-    transition: transform .25s ease, box-shadow .25s ease;
-    animation: rise .6s ease both;
+    border-radius: 14px; padding: 15px 16px 8px; box-shadow: var(--shadow);
+    transition: transform .2s ease, box-shadow .2s ease;
+    animation: rise .5s ease both; overflow: hidden;
   }
-  .card:hover { transform: translateY(-3px); }
-  .card:nth-child(2) { animation-delay: .05s; } .card:nth-child(3) { animation-delay: .1s; }
-  .card:nth-child(4) { animation-delay: .15s; } .card:nth-child(5) { animation-delay: .2s; }
-  .card .k { font-size: 12px; color: var(--muted); margin-bottom: 7px; font-weight: 500; }
-  .card .v {
-    font-size: 23px; font-weight: 750; letter-spacing: -0.01em;
-    font-variant-numeric: tabular-nums;
-  }
-  .card.hero .v {
-    background: linear-gradient(135deg, #7c3aed, #2563eb);
-    -webkit-background-clip: text; background-clip: text; color: transparent;
-  }
-  .opt .v { color: #22c55e; } .mid .v { color: #3b82f6; } .pes .v { color: #ef4444; }
+  .card:hover { transform: translateY(-2px); }
+  .card:nth-child(2){animation-delay:.04s} .card:nth-child(3){animation-delay:.08s}
+  .card:nth-child(4){animation-delay:.12s} .card:nth-child(5){animation-delay:.16s}
+  .card .k { font-size: 12px; color: var(--muted); font-weight: 500; margin-bottom: 5px; }
+  .card .v { font-size: 22px; font-weight: 750; letter-spacing: -0.01em;
+             font-variant-numeric: tabular-nums; }
+  .card .d { font-size: 11px; margin-top: 2px; font-variant-numeric: tabular-nums; height: 14px; }
+  .d.up { color: var(--up); } .d.down { color: var(--down); } .d.flat { color: var(--faint); }
+  .card .spark { height: 38px; margin: 4px -16px -8px; }
+  .opt .v { color: var(--up); } .mid .v { color: var(--blue); } .pes .v { color: var(--down); }
 
+  /* ---- 面板 + 分段控制 ---- */
   .panel {
     background: var(--panel); border: 1px solid var(--border);
-    border-radius: 18px; padding: 20px; margin-bottom: 18px;
-    box-shadow: var(--shadow);
-    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
-    animation: rise .6s .1s ease both;
+    border-radius: 14px; padding: 18px 18px 12px; margin-bottom: 18px;
+    box-shadow: var(--shadow); animation: rise .5s .1s ease both;
   }
-  .panel h2 { font-size: 15px; font-weight: 650; margin-bottom: 8px; letter-spacing: -0.01em; }
-  .chart-box { position: relative; height: 360px; }
-  .note { font-size: 12px; color: var(--muted); line-height: 1.8; margin-top: 10px; }
-  #status { font-size: 12px; color: var(--faint); margin-top: 6px; text-align: center; }
-  @keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+  .panel-head { display: flex; align-items: center; justify-content: space-between;
+                margin-bottom: 6px; flex-wrap: wrap; gap: 8px; }
+  .panel h2 { font-size: 15px; font-weight: 650; letter-spacing: -0.01em; }
+  .seg { display: inline-flex; background: var(--seg-bg); border-radius: 9px; padding: 3px; gap: 2px; }
+  .seg button {
+    border: 0; background: transparent; color: var(--muted); cursor: pointer;
+    font: 500 12px/1 Inter, inherit; padding: 5px 14px; border-radius: 7px;
+    transition: all .18s ease;
+  }
+  .seg button:hover { color: var(--text); }
+  .seg button.on { background: var(--panel); color: var(--text); font-weight: 650;
+                   box-shadow: 0 1px 3px rgba(16,24,40,.12); }
+  .chart-box { height: 350px; }
+  .note { font-size: 12px; color: var(--muted); line-height: 1.8; margin-top: 8px; }
+  #status { font-size: 12px; color: var(--faint); text-align: center; }
+  @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 </style>
 </head>
 <body>
 <div class="aurora"><span></span><span></span><span></span></div>
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <div class="brand"><span class="logo">R</span>BN-RLUSD Dashboard</div>
+    <div class="top-status"><span class="pulse"></span><span id="top-status">连接中…</span></div>
+  </div>
+</div>
+
 <div class="wrap">
-  <header>
-    <h1><span class="dot"></span>币安 RLUSD 实时统计 & APR 预估</h1>
-    <div class="sub">自 2026-07-14 08:00 (UTC+8) 起每小时快照 · 数据每小时更新 · 页面每 10 分钟自动刷新 · 图表可拖拽缩放</div>
-  </header>
+  <div class="pagehead">
+    <h1>币安 RLUSD 实时统计 & APR 预估</h1>
+    <div class="sub">自 2026-07-14 08:00 (UTC+8) 起每小时快照 · 数据每小时更新 · 页面每 10 分钟自动刷新</div>
+  </div>
 
   <div class="cards">
-    <div class="card hero"><div class="k">RLUSD 总量</div><div class="v" id="c-total">–</div></div>
-    <div class="card opt"><div class="k">乐观 APR（利用率恒定）</div><div class="v" id="c-opt">–</div></div>
-    <div class="card mid"><div class="k">中间 APR</div><div class="v" id="c-mid">–</div></div>
-    <div class="card pes"><div class="k">悲观 APR（闲置恒定）</div><div class="v" id="c-pes">–</div></div>
-    <div class="card"><div class="k">数据更新至</div><div class="v" id="c-time" style="font-size:16px">–</div></div>
+    <div class="card"><div class="k">RLUSD 总量</div><div class="v" id="c-total">–</div>
+      <div class="d" id="d-total"></div><div class="spark" id="s-total"></div></div>
+    <div class="card opt"><div class="k">乐观 APR（利用率恒定）</div><div class="v" id="c-opt">–</div>
+      <div class="d" id="d-opt"></div><div class="spark" id="s-opt"></div></div>
+    <div class="card mid"><div class="k">中间 APR</div><div class="v" id="c-mid">–</div>
+      <div class="d" id="d-mid"></div><div class="spark" id="s-mid"></div></div>
+    <div class="card pes"><div class="k">悲观 APR（闲置恒定）</div><div class="v" id="c-pes">–</div>
+      <div class="d" id="d-pes"></div><div class="spark" id="s-pes"></div></div>
+    <div class="card"><div class="k">数据更新至</div><div class="v" id="c-time" style="font-size:16px">–</div>
+      <div class="d flat">每 10 分钟自动刷新</div></div>
   </div>
 
   <div class="panel">
-    <h2>RLUSD 总量</h2>
+    <div class="panel-head">
+      <h2>RLUSD 总量</h2>
+      <div class="seg" id="seg">
+        <button data-r="24">24H</button>
+        <button data-r="168">7D</button>
+        <button data-r="0" class="on">全部</button>
+      </div>
+    </div>
     <div class="chart-box" id="chartTotal"></div>
   </div>
 
   <div class="panel">
-    <h2>预估 APR（自第一周结算 07-24 08:00 起）</h2>
+    <div class="panel-head"><h2>预估 APR（自第一周结算 07-24 08:00 起）</h2></div>
     <div class="chart-box" id="chartApr"></div>
     <div class="note" id="params-note"></div>
   </div>
@@ -163,114 +198,84 @@ const toUTC8 = t => {
   return d.toISOString().slice(5, 16).replace('T', ' ');
 };
 const darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
-const cssVar = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const cssVar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const themeColors = () => ({ text: cssVar('--muted'), faint: cssVar('--faint'), grid: cssVar('--grid'),
+  tooltipBg: cssVar('--tooltip-bg'), tooltipText: cssVar('--tooltip-text'),
+  purple: cssVar('--purple'), blue: cssVar('--blue'), zoomFill: cssVar('--zoom-fill'),
+  border: cssVar('--border') });
 
 let chartTotal = null, chartApr = null, cached = null;
+const sparks = {};
 
-function themeColors() {
-  return { text: cssVar('--muted'), faint: cssVar('--faint'), grid: cssVar('--grid'),
-           tooltipBg: cssVar('--tooltip-bg'), tooltipText: cssVar('--tooltip-text'),
-           purple: cssVar('--purple'), zoomFill: cssVar('--zoom-fill'),
-           border: cssVar('--border') };
-}
-
-// 数字滚动动画
 function animateValue(el, target, decimals, suffix = '') {
   if (target == null) { el.textContent = '–'; return; }
-  const from = parseFloat(el.dataset.v || '0');
-  const to = target;
+  const from = parseFloat(el.dataset.v || '0'), to = target;
   el.dataset.v = to;
   const t0 = performance.now(), dur = 800;
   (function step(t) {
-    const k = Math.min((t - t0) / dur, 1);
-    const e = 1 - Math.pow(1 - k, 3); // easeOutCubic
+    const k = Math.min((t - t0) / dur, 1), e = 1 - Math.pow(1 - k, 3);
     el.textContent = fmtNum(from + (to - from) * e, decimals) + suffix;
     if (k < 1) requestAnimationFrame(step);
   })(t0);
 }
 
-function baseOption(c, labels, yFormatter) {
+function setDelta(el, cur, prev, unit) {
+  if (cur == null || prev == null || !prev) { el.textContent = ''; el.className = 'd flat'; return; }
+  const diff = cur - prev;
+  const pct = unit === 'pp' ? diff : diff / prev * 100;
+  const cls = Math.abs(pct) < 1e-9 ? 'flat' : (pct > 0 ? 'up' : 'down');
+  const arrow = pct > 0 ? '▲' : pct < 0 ? '▼' : '–';
+  el.className = 'd ' + cls;
+  el.textContent = unit === 'pp'
+    ? `${arrow} ${Math.abs(diff).toFixed(2)} pp vs 上一小时`
+    : `${arrow} ${Math.abs(pct).toFixed(2)}% vs 上一小时`;
+}
+
+function sparkOption(vals, color) {
+  return {
+    animation: false, grid: { left: 0, right: 0, top: 2, bottom: 0 },
+    xAxis: { type: 'category', show: false, data: vals.map((_, i) => i), boundaryGap: false },
+    yAxis: { type: 'value', show: false, min: v => v.min - (v.max - v.min) * 0.08 },
+    tooltip: { show: false },
+    series: [{ type: 'line', data: vals, smooth: true, symbol: 'none',
+      lineStyle: { width: 1.5, color },
+      areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+        { offset: 0, color: color + '55' }, { offset: 1, color: color + '00' }]) } }],
+  };
+}
+
+function baseOption(c, labels, yFmt) {
   return {
     animationDuration: 700, animationEasing: 'cubicOut',
-    grid: { left: 56, right: 18, top: 34, bottom: 52 },
+    grid: { left: 56, right: 18, top: 30, bottom: 50 },
     legend: { top: 0, left: 0, icon: 'roundRect', itemWidth: 16, itemHeight: 4,
               textStyle: { color: c.text, fontSize: 12 } },
-    tooltip: {
-      trigger: 'axis',
-      backgroundColor: c.tooltipBg, borderColor: c.border,
+    tooltip: { trigger: 'axis', backgroundColor: c.tooltipBg, borderColor: c.border,
       textStyle: { color: c.tooltipText, fontSize: 12 },
       axisPointer: { type: 'line', lineStyle: { color: c.faint, type: 'dashed' } },
-      extraCssText: 'backdrop-filter: blur(8px); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.15);',
-    },
+      extraCssText: 'border-radius:10px; box-shadow:0 8px 24px rgba(0,0,0,.14);' },
     xAxis: { type: 'category', data: labels, boundaryGap: false,
              axisLine: { lineStyle: { color: c.grid } }, axisTick: { show: false },
              axisLabel: { color: c.text, fontSize: 11 } },
     yAxis: { type: 'value', splitLine: { lineStyle: { color: c.grid } },
-             axisLabel: { color: c.text, fontSize: 11, formatter: yFormatter } },
+             axisLabel: { color: c.text, fontSize: 11, formatter: yFmt } },
     dataZoom: [
       { type: 'inside', throttle: 60 },
-      { type: 'slider', height: 18, bottom: 8, borderColor: 'transparent',
+      { type: 'slider', height: 16, bottom: 6, borderColor: 'transparent',
         backgroundColor: 'transparent', fillerColor: c.zoomFill,
-        handleStyle: { color: c.purple }, moveHandleSize: 0,
+        handleStyle: { color: c.blue }, moveHandleSize: 0,
         dataBackground: { lineStyle: { color: c.grid }, areaStyle: { color: c.zoomFill } },
-        selectedDataBackground: { lineStyle: { color: c.purple } },
         textStyle: { color: c.faint, fontSize: 10 } },
     ],
   };
 }
+const grad = (a, b) => new echarts.graphic.LinearGradient(0, 0, 0, 1,
+  [{ offset: 0, color: a }, { offset: 1, color: b }]);
 
-const grad = (top, bottom) => new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-  { offset: 0, color: top }, { offset: 1, color: bottom }]);
-
-function totalOption(c, labels, hours) {
-  const o = baseOption(c, labels, v => (v / 1e6).toFixed(0) + 'M');
-  o.tooltip.formatter = ps => {
-    let sum = 0, html = `<b>${ps[0].axisValueLabel}</b> (UTC+8)`;
-    ps.forEach(p => { sum += p.value;
-      html += `<br/>${p.marker} ${p.seriesName}: <b>${fmtNum(p.value)}</b>`; });
-    return html + `<br/>总量: <b>${fmtNum(sum)}</b>`;
-  };
-  o.series = [
-    { name: 'ETH 链', type: 'line', stack: 't', smooth: true, symbol: 'none',
-      data: hours.map(h => h.eth),
-      lineStyle: { width: 1.5, color: '#6366f1' },
-      areaStyle: { color: grad('rgba(99,102,241,0.45)', 'rgba(99,102,241,0.03)') },
-      emphasis: { focus: 'series' } },
-    { name: 'XRP 链', type: 'line', stack: 't', smooth: true, symbol: 'none',
-      data: hours.map(h => h.xrp),
-      lineStyle: { width: 1.5, color: '#14b8a6' },
-      areaStyle: { color: grad('rgba(20,184,166,0.45)', 'rgba(20,184,166,0.03)') },
-      emphasis: { focus: 'series' } },
-  ];
-  return o;
-}
-
-function aprOption(c, labels, aprHours) {
-  const o = baseOption(c, labels, v => v + '%');
-  o.tooltip.formatter = ps => {
-    let html = `<b>${ps[0].axisValueLabel}</b> (UTC+8)`;
-    ps.forEach(p => { if (p.value != null)
-      html += `<br/>${p.marker} ${p.seriesName}: <b>${fmtNum(p.value, 2)}%</b>`; });
-    return html;
-  };
-  const mk = (name, key, color, glow) => ({
-    name, type: 'line', smooth: true, symbol: 'none',
-    data: aprHours.map(h => h[key]),
-    lineStyle: { width: 2, color, shadowColor: glow, shadowBlur: 8 },
-    emphasis: { focus: 'series' },
-  });
-  o.series = [
-    mk('乐观 APR', 'apr_optimistic', '#22c55e', 'rgba(34,197,94,0.35)'),
-    mk('中间 APR', 'apr_mid', '#3b82f6', 'rgba(59,130,246,0.35)'),
-    mk('悲观 APR', 'apr_pessimistic', '#ef4444', 'rgba(239,68,68,0.35)'),
-  ];
-  return o;
-}
-
-function render(data) {
+function render(data, keepZoom = true) {
   const hours = data.hours.filter(h => h.total != null);
   const labels = hours.map(h => toUTC8(h.t));
-  const last = hours[hours.length - 1];
+  const last = hours[hours.length - 1], prev = hours[hours.length - 2];
   const c = themeColors();
 
   animateValue(document.getElementById('c-total'), last.total, 0);
@@ -278,6 +283,10 @@ function render(data) {
   animateValue(document.getElementById('c-mid'), last.apr_mid, 2, '%');
   animateValue(document.getElementById('c-pes'), last.apr_pessimistic, 2, '%');
   document.getElementById('c-time').textContent = toUTC8(last.t) + ' (UTC+8)';
+  setDelta(document.getElementById('d-total'), last.total, prev && prev.total, '%');
+  setDelta(document.getElementById('d-opt'), last.apr_optimistic, prev && prev.apr_optimistic, 'pp');
+  setDelta(document.getElementById('d-mid'), last.apr_mid, prev && prev.apr_mid, 'pp');
+  setDelta(document.getElementById('d-pes'), last.apr_pessimistic, prev && prev.apr_pessimistic, 'pp');
 
   const p = data.params;
   document.getElementById('params-note').textContent =
@@ -290,37 +299,105 @@ function render(data) {
     `悲观 = 未利用资金恒定为第一周水平，其余资金全部参与瓜分。` +
     `注：当总存款低于第一周未利用资金时，悲观口径下利用金额 ≤ 0，模型失效，曲线留空。`;
 
-  // APR 预估只从第一周结算后开始显示（之前已是实际值，预估无意义）
   const aprHours = hours.filter(h => h.t >= p.week1_window[1]);
   const aprLabels = aprHours.map(h => toUTC8(h.t));
+
+  // sparklines（近 48 小时）
+  const tail = hours.slice(-48);
+  const sparkDefs = [
+    ['s-total', tail.map(h => h.total), c.purple],
+    ['s-opt', tail.map(h => h.apr_optimistic), '#16a34a'],
+    ['s-mid', tail.map(h => h.apr_mid), '#3b82f6'],
+    ['s-pes', tail.map(h => h.apr_pessimistic), '#dc2626'],
+  ];
+  for (const [id, vals, color] of sparkDefs) {
+    if (!sparks[id]) sparks[id] = echarts.init(document.getElementById(id));
+    sparks[id].setOption(sparkOption(vals, color), true);
+  }
+
+  const totalO = baseOption(c, labels, v => (v / 1e6).toFixed(0) + 'M');
+  totalO.tooltip.formatter = ps => {
+    let sum = 0, html = `<b>${ps[0].axisValueLabel}</b> (UTC+8)`;
+    ps.forEach(p => { sum += p.value;
+      html += `<br/>${p.marker} ${p.seriesName}: <b>${fmtNum(p.value)}</b>`; });
+    return html + `<br/>总量: <b>${fmtNum(sum)}</b>`;
+  };
+  totalO.series = [
+    { name: 'ETH 链', type: 'line', stack: 't', smooth: true, symbol: 'none',
+      data: hours.map(h => h.eth), lineStyle: { width: 1.5, color: '#6366f1' },
+      areaStyle: { color: grad('rgba(99,102,241,0.42)', 'rgba(99,102,241,0.02)') },
+      emphasis: { focus: 'series' } },
+    { name: 'XRP 链', type: 'line', stack: 't', smooth: true, symbol: 'none',
+      data: hours.map(h => h.xrp), lineStyle: { width: 1.5, color: '#14b8a6' },
+      areaStyle: { color: grad('rgba(20,184,166,0.42)', 'rgba(20,184,166,0.02)') },
+      emphasis: { focus: 'series' } },
+  ];
+
+  const aprO = baseOption(c, aprLabels, v => v + '%');
+  aprO.tooltip.formatter = ps => {
+    let html = `<b>${ps[0].axisValueLabel}</b> (UTC+8)`;
+    ps.forEach(p => { if (p.value != null)
+      html += `<br/>${p.marker} ${p.seriesName}: <b>${fmtNum(p.value, 2)}%</b>`; });
+    return html;
+  };
+  const mk = (name, key, color) => ({ name, type: 'line', smooth: true, symbol: 'none',
+    data: aprHours.map(h => h[key]), lineStyle: { width: 2, color },
+    emphasis: { focus: 'series' } });
+  aprO.series = [mk('乐观 APR', 'apr_optimistic', '#16a34a'),
+                 mk('中间 APR', 'apr_mid', '#3b82f6'),
+                 mk('悲观 APR', 'apr_pessimistic', '#dc2626')];
 
   if (!chartTotal) {
     chartTotal = echarts.init(document.getElementById('chartTotal'));
     chartApr = echarts.init(document.getElementById('chartApr'));
-    window.addEventListener('resize', () => { chartTotal.resize(); chartApr.resize(); });
+    window.addEventListener('resize', () => {
+      chartTotal.resize(); chartApr.resize();
+      Object.values(sparks).forEach(s => s.resize());
+    });
   }
-  // setOption 增量更新：自动刷新时保留用户的缩放/平移状态
-  chartTotal.setOption(totalOption(c, labels, hours));
-  chartApr.setOption(aprOption(c, aprLabels, aprHours));
+  chartTotal.setOption(totalO);
+  chartApr.setOption(aprO);
 }
+
+// 分段控制：两张图同步缩放
+document.getElementById('seg').addEventListener('click', e => {
+  const btn = e.target.closest('button'); if (!btn || !cached) return;
+  document.querySelectorAll('#seg button').forEach(b => b.classList.toggle('on', b === btn));
+  const n = +btn.dataset.r;
+  const zoom = n === 0 ? [{ start: 0, end: 100 }, { start: 0, end: 100 }]
+    : (() => {
+        const total = cached.hours.filter(h => h.total != null).length;
+        const start = Math.max(0, (total - n) / total * 100);
+        return [{ start, end: 100 }, { start, end: 100 }];
+      })();
+  chartTotal && chartTotal.setOption({ dataZoom: zoom });
+  chartApr && chartApr.setOption({ dataZoom: zoom });
+});
 
 async function load() {
   const status = document.getElementById('status');
+  const top = document.getElementById('top-status');
   try {
     const resp = await fetch('data.json?_=' + Date.now(), { cache: 'no-store' });
     cached = await resp.json();
     render(cached);
-    status.textContent = '上次页面刷新: ' + toUTC8(new Date().toISOString()) + ' (UTC+8)';
+    const t = toUTC8(new Date().toISOString());
+    status.textContent = '上次页面刷新: ' + t + ' (UTC+8)';
+    top.textContent = '数据正常 · ' + t;
   } catch (e) {
     status.textContent = '数据加载失败: ' + e.message;
+    top.textContent = '连接异常';
   }
 }
 
-function rebuild() {  // 主题切换时整体重建（ECharts 不支持运行时换肤）
-  if (chartTotal) { chartTotal.dispose(); chartApr.dispose(); chartTotal = chartApr = null; }
+darkQuery.addEventListener('change', () => {
+  if (chartTotal) {
+    chartTotal.dispose(); chartApr.dispose(); chartTotal = chartApr = null;
+    Object.values(sparks).forEach(s => s.dispose());
+    for (const k in sparks) delete sparks[k];
+  }
   if (cached) render(cached);
-}
-darkQuery.addEventListener('change', rebuild);
+});
 
 load();
 setInterval(load, 10 * 60 * 1000);
