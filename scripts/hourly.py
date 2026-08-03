@@ -17,6 +17,9 @@ DATA_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file_
 START_TS = int(datetime(2026, 7, 14, 0, 0, 0, tzinfo=timezone.utc).timestamp())  # 7/14 08:00 (UTC+8)
 WEEK1_START = int(datetime(2026, 7, 17, 0, 0, 0, tzinfo=timezone.utc).timestamp())  # 7/17 08:00 (UTC+8)
 WEEK1_END = int(datetime(2026, 7, 24, 0, 0, 0, tzinfo=timezone.utc).timestamp())  # 7/24 08:00 (UTC+8)
+WEEK2_START = WEEK1_END  # 7/24 08:00 (UTC+8)
+WEEK2_END = int(datetime(2026, 7, 31, 0, 0, 0, tzinfo=timezone.utc).timestamp())  # 7/31 08:00 (UTC+8)
+WEEK2_ACTUAL_APR = 0.0822  # 第二周实际 APR（币安公布），用于校准第三周预估
 
 WEEKLY_REWARD = 200_000.0
 ACTIVITY_APR = 0.2238
@@ -84,33 +87,58 @@ def fetch_hours(timestamps):
 
 
 def compute_params(hours_map):
-    """用第一周 168 个小时快照（等权平均）计算利用率参数"""
-    window = [hours_map[ts]["total"]
-              for ts in range(WEEK1_START, WEEK1_END, 3600)
-              if ts in hours_map and hours_map[ts]]
-    if len(window) < 160:
-        raise RuntimeError(f"第一周窗口数据不足（{len(window)}/168），无法计算参数")
-    avg = sum(window) / len(window)
-    utilization = WEEK1_UTILIZED / avg
+    """第一周参数（历史参考）+ 第二周实际 APR 校准参数（用于第三周预估）。
+
+    第二周实际 APR 已由币安公布（WEEK2_ACTUAL_APR），奖励池不变（每周 200,000），
+    故第二周利用金额 = 年化池 ÷ 第二周实际 APR；
+    第二周利用率/未利用额用第二周至今的小时快照等权平均计算。
+    """
+    w1 = [hours_map[ts]["total"]
+          for ts in range(WEEK1_START, WEEK1_END, 3600)
+          if ts in hours_map and hours_map[ts]]
+    if len(w1) < 160:
+        raise RuntimeError(f"第一周窗口数据不足（{len(w1)}/168），无法计算参数")
+    avg1 = sum(w1) / len(w1)
+
+    now = int(time.time())
+    w2 = [hours_map[ts]["total"]
+          for ts in range(WEEK2_START, min(WEEK2_END, now // 3600 * 3600 + 1), 3600)
+          if ts in hours_map and hours_map[ts]]
+    if len(w2) < 24:
+        raise RuntimeError(f"第二周窗口数据不足（{len(w2)}h），无法校准参数")
+    avg2 = sum(w2) / len(w2)
+    utilized2 = ANNUAL_REWARD_POOL / WEEK2_ACTUAL_APR  # ≈ 126.87M
+    utilization2 = utilized2 / avg2
     return {
         "weekly_reward": WEEKLY_REWARD,
         "activity_apr": ACTIVITY_APR,
         "annual_reward_pool": round(ANNUAL_REWARD_POOL, 2),
+        "prediction_target": "week3",
+        "apr_display_start": iso(WEEK2_START),
+        # 第一周（已结算，历史参考）
         "week1_window": [iso(WEEK1_START), iso(WEEK1_END)],
-        "week1_snapshot_hours": len(window),
-        "week1_avg_deposit": round(avg, 2),
+        "week1_snapshot_hours": len(w1),
+        "week1_avg_deposit": round(avg1, 2),
         "week1_utilized": round(WEEK1_UTILIZED, 2),
-        "week1_utilization": round(utilization, 6),
-        "week1_unused": round(avg - WEEK1_UTILIZED, 2),
+        "week1_utilization": round(WEEK1_UTILIZED / avg1, 6),
+        "week1_unused": round(avg1 - WEEK1_UTILIZED, 2),
+        # 第二周（实际 APR 校准，第三周预估的基础）
+        "week2_window": [iso(WEEK2_START), iso(WEEK2_END)],
+        "week2_snapshot_hours": len(w2),
+        "week2_actual_apr": WEEK2_ACTUAL_APR,
+        "week2_avg_deposit": round(avg2, 2),
+        "week2_utilized": round(utilized2, 2),
+        "week2_utilization": round(utilization2, 6),
+        "week2_unused": round(avg2 - utilized2, 2),
     }
 
 
 def apply_apr(entry, params):
-    """按最新小时余额计算三种预估 APR（%）"""
+    """按最新小时余额计算第三周三种预估 APR（%，用第二周校准参数）"""
     total = entry["total"]
     pool = ANNUAL_REWARD_POOL
-    apr_opt = pool / (total * params["week1_utilization"]) * 100
-    utilized_pes = total - params["week1_unused"]
+    apr_opt = pool / (total * params["week2_utilization"]) * 100
+    utilized_pes = total - params["week2_unused"]
     apr_pes = pool / utilized_pes * 100 if utilized_pes > 0 else None
     entry["apr_optimistic"] = round(apr_opt, 4)
     entry["apr_pessimistic"] = round(apr_pes, 4) if apr_pes is not None else None
