@@ -203,7 +203,7 @@ function render(data) {
       { label: '悲观 APR', data: aprHours.map(h => h.apr_pessimistic), borderColor: '#ef4444' },
     ]},
     options: { ...common, scales: { ...common.scales,
-      y: { ...common.scales.y, ticks: { callback: v => v + '%' } } },
+      y: { ...common.scales.y, ticks: { callback: v => (+v).toFixed(2) + '%' } } },
       plugins: { ...common.plugins,
         tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${fmtNum(ctx.parsed.y, 2)}%` } } } },
   };
