@@ -114,7 +114,7 @@ def compute_params(hours_map):
         "activity_apr": ACTIVITY_APR,
         "annual_reward_pool": round(ANNUAL_REWARD_POOL, 2),
         "prediction_target": "week3",
-        "apr_display_start": iso(WEEK2_START),
+        "apr_display_start": iso(WEEK2_END),  # 曲线只显示第三周，第二周已是实际值无预估意义
         # 第一周（已结算，历史参考）
         "week1_window": [iso(WEEK1_START), iso(WEEK1_END)],
         "week1_snapshot_hours": len(w1),
