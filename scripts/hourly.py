@@ -19,9 +19,11 @@ WEEK1_START = int(datetime(2026, 7, 17, 0, 0, 0, tzinfo=timezone.utc).timestamp(
 WEEK1_END = int(datetime(2026, 7, 24, 0, 0, 0, tzinfo=timezone.utc).timestamp())  # 7/24 08:00 (UTC+8)
 WEEK2_START = WEEK1_END  # 7/24 08:00 (UTC+8)
 WEEK2_END = int(datetime(2026, 7, 31, 0, 0, 0, tzinfo=timezone.utc).timestamp())  # 7/31 08:00 (UTC+8)
-WEEK2_ACTUAL_APR = 0.0822  # 第二周实际 APR（币安公布），用于校准第三周预估
+WEEK3_START = WEEK2_END  # 7/31 08:00 (UTC+8)
+WEEK3_END = int(datetime(2026, 8, 7, 0, 0, 0, tzinfo=timezone.utc).timestamp())  # 8/7 08:00 (UTC+8)
+WEEK3_ACTUAL_APR = 0.0808  # 第三周实际 APR（币安公布，XRP 计价 $1.0351），用于校准第四周预估
 
-WEEKLY_REWARD = 200_000.0
+WEEKLY_REWARD = 200_000.0  # 每周 200,000 美元等值 XRP（发放时按当周币安公布价格折算币数）
 ACTIVITY_APR = 0.2238
 ANNUAL_REWARD_POOL = WEEKLY_REWARD * 365 / 7  # 10,428,571.43
 WEEK1_UTILIZED = WEEKLY_REWARD / (ACTIVITY_APR * 7 / 365)  # ≈ 46,597,730
@@ -87,11 +89,11 @@ def fetch_hours(timestamps):
 
 
 def compute_params(hours_map):
-    """第一周参数（历史参考）+ 第二周实际 APR 校准参数（用于第三周预估）。
+    """第一周参数（历史参考）+ 第三周实际 APR 校准参数（用于第四周预估）。
 
-    第二周实际 APR 已由币安公布（WEEK2_ACTUAL_APR），奖励池不变（每周 200,000），
-    故第二周利用金额 = 年化池 ÷ 第二周实际 APR；
-    第二周利用率/未利用额用第二周至今的小时快照等权平均计算。
+    第三周实际 APR 已由币安公布（WEEK3_ACTUAL_APR），奖励池不变（每周 200,000），
+    故第三周利用金额 = 年化池 ÷ 第三周实际 APR；
+    第三周利用率/未利用额用第三周的小时快照等权平均计算。
     """
     w1 = [hours_map[ts]["total"]
           for ts in range(WEEK1_START, WEEK1_END, 3600)
@@ -100,21 +102,20 @@ def compute_params(hours_map):
         raise RuntimeError(f"第一周窗口数据不足（{len(w1)}/168），无法计算参数")
     avg1 = sum(w1) / len(w1)
 
-    now = int(time.time())
-    w2 = [hours_map[ts]["total"]
-          for ts in range(WEEK2_START, min(WEEK2_END, now // 3600 * 3600 + 1), 3600)
+    w3 = [hours_map[ts]["total"]
+          for ts in range(WEEK3_START, WEEK3_END, 3600)
           if ts in hours_map and hours_map[ts]]
-    if len(w2) < 24:
-        raise RuntimeError(f"第二周窗口数据不足（{len(w2)}h），无法校准参数")
-    avg2 = sum(w2) / len(w2)
-    utilized2 = ANNUAL_REWARD_POOL / WEEK2_ACTUAL_APR  # ≈ 126.87M
-    utilization2 = utilized2 / avg2
+    if len(w3) < 160:
+        raise RuntimeError(f"第三周窗口数据不足（{len(w3)}/168），无法校准参数")
+    avg3 = sum(w3) / len(w3)
+    utilized3 = ANNUAL_REWARD_POOL / WEEK3_ACTUAL_APR  # ≈ 129.04M
+    utilization3 = utilized3 / avg3
     return {
         "weekly_reward": WEEKLY_REWARD,
         "activity_apr": ACTIVITY_APR,
         "annual_reward_pool": round(ANNUAL_REWARD_POOL, 2),
-        "prediction_target": "week3",
-        "apr_display_start": iso(WEEK2_END),  # 曲线只显示第三周，第二周已是实际值无预估意义
+        "prediction_target": "week4",
+        "apr_display_start": iso(WEEK3_END),  # 曲线只显示第四周，第三周已是实际值无预估意义
         # 第一周（已结算，历史参考）
         "week1_window": [iso(WEEK1_START), iso(WEEK1_END)],
         "week1_snapshot_hours": len(w1),
@@ -122,23 +123,23 @@ def compute_params(hours_map):
         "week1_utilized": round(WEEK1_UTILIZED, 2),
         "week1_utilization": round(WEEK1_UTILIZED / avg1, 6),
         "week1_unused": round(avg1 - WEEK1_UTILIZED, 2),
-        # 第二周（实际 APR 校准，第三周预估的基础）
-        "week2_window": [iso(WEEK2_START), iso(WEEK2_END)],
-        "week2_snapshot_hours": len(w2),
-        "week2_actual_apr": WEEK2_ACTUAL_APR,
-        "week2_avg_deposit": round(avg2, 2),
-        "week2_utilized": round(utilized2, 2),
-        "week2_utilization": round(utilization2, 6),
-        "week2_unused": round(avg2 - utilized2, 2),
+        # 第三周（实际 APR 校准，第四周预估的基础）
+        "week3_window": [iso(WEEK3_START), iso(WEEK3_END)],
+        "week3_snapshot_hours": len(w3),
+        "week3_actual_apr": WEEK3_ACTUAL_APR,
+        "week3_avg_deposit": round(avg3, 2),
+        "week3_utilized": round(utilized3, 2),
+        "week3_utilization": round(utilization3, 6),
+        "week3_unused": round(avg3 - utilized3, 2),
     }
 
 
 def apply_apr(entry, params):
-    """按最新小时余额计算第三周三种预估 APR（%，用第二周校准参数）"""
+    """按最新小时余额计算第四周三种预估 APR（%，用第三周校准参数）"""
     total = entry["total"]
     pool = ANNUAL_REWARD_POOL
-    apr_opt = pool / (total * params["week2_utilization"]) * 100
-    utilized_pes = total - params["week2_unused"]
+    apr_opt = pool / (total * params["week3_utilization"]) * 100
+    utilized_pes = total - params["week3_unused"]
     apr_pes = pool / utilized_pes * 100 if utilized_pes > 0 else None
     entry["apr_optimistic"] = round(apr_opt, 4)
     entry["apr_pessimistic"] = round(apr_pes, 4) if apr_pes is not None else None
