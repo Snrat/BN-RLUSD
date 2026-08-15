@@ -174,7 +174,7 @@ function render(data) {
         borderColor: '#14b8a6', backgroundColor: 'rgba(20,184,166,0.22)',
         fill: true, stack: 'chain', yAxisID: 'y' },
       { label: 'APR（拟合）', data: hours.map(h => h.apr),
-        borderColor: '#f97316', borderWidth: 3, yAxisID: 'y1', spanGaps: true, order: 1 },
+        borderColor: '#f97316', borderWidth: 3, yAxisID: 'y1', spanGaps: true, order: -1 },
     ]},
     options: { ...common,
       scales: { x: common.scales.x,
