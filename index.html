@@ -72,7 +72,7 @@
     background: linear-gradient(135deg, #7c3aed, #2563eb);
     -webkit-background-clip: text; background-clip: text; color: transparent;
   }
-  .mid .v { color: #3b82f6; }
+  .mid .v { color: #f97316; }
 
   .panel {
     background: var(--panel); border: 1px solid var(--border);
@@ -174,7 +174,7 @@ function render(data) {
         borderColor: '#14b8a6', backgroundColor: 'rgba(20,184,166,0.35)',
         fill: true, stack: 'chain', yAxisID: 'y' },
       { label: 'APR（拟合）', data: hours.map(h => h.apr),
-        borderColor: '#3b82f6', yAxisID: 'y1', spanGaps: true },
+        borderColor: '#f97316', borderWidth: 3, yAxisID: 'y1', spanGaps: true },
     ]},
     options: { ...common,
       scales: { x: common.scales.x,
@@ -182,7 +182,7 @@ function render(data) {
              ticks: { callback: v => (v / 1e6).toFixed(0) + 'M' } },
         y1: { position: 'right', border: { display: false },
               grid: { drawOnChartArea: false },
-              ticks: { callback: v => (+v).toFixed(2) + '%' } } },
+              ticks: { color: '#f97316', callback: v => (+v).toFixed(2) + '%' } } },
       plugins: { ...common.plugins,
         tooltip: { callbacks: {
           label: ctx => ctx.dataset.yAxisID === 'y1'
