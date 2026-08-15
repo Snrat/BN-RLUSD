@@ -7,5 +7,8 @@ if __name__ == "__main__":
     print(f"回填范围: {hourly.iso(hourly.START_TS)} ~ {hourly.iso(end)}")
     data = hourly.fill(hourly.START_TS, end)
     p = data["params"]
-    print(f"第一周({p['week1_snapshot_hours']}h快照) 日均存款 {p['week1_avg_deposit']:,.0f}"
-          f" | 利用率 {p['week1_utilization']:.4%} | 未利用 {p['week1_unused']:,.0f}")
+    print(f"拟合: 利用金额 = {p['fit_slope']:.4f} × 总存款 + {p['fit_intercept']:,.0f}"
+          f" | 残差 ±{p['fit_sigma']:,.0f}")
+    for i, w in enumerate(p["fit_weeks"]):
+        print(f"  第{i + 1}周({w['snapshot_hours']}h快照) 实际 {w['actual_apr']:.2%}"
+              f" | 日均存款 {w['avg_deposit']:,.0f} | 利用 {w['utilized']:,.0f}")

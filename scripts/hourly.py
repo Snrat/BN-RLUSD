@@ -23,14 +23,20 @@ WEEK3_START = WEEK2_END  # 7/31 08:00 (UTC+8)
 WEEK3_END = int(datetime(2026, 8, 7, 0, 0, 0, tzinfo=timezone.utc).timestamp())  # 8/7 08:00 (UTC+8)
 WEEK4_START = WEEK3_END  # 8/7 08:00 (UTC+8)
 WEEK4_END = int(datetime(2026, 8, 14, 0, 0, 0, tzinfo=timezone.utc).timestamp())  # 8/14 08:00 (UTC+8)
-WEEK4_ACTUAL_APR = 0.0769  # 第四周实际 APR（币安公布），用于校准第五周预估
+# 已结算四周的实际 APR（币安公布）。奖励按美元等值 XRP 计算，币安公布的 XRP 计价价格
+# （1.1077 / 1.0827 / 1.0351 / 1.0094）只用于折算发放币数，不影响 USD 口径 APR
+# (周开始, 周结束, 实际 APR)
+SETTLED_WEEKS = [
+    (WEEK1_START, WEEK1_END, 0.2225),  # 第一次分发 2026-07-24
+    (WEEK2_START, WEEK2_END, 0.0822),  # 第二次分发 2026-07-31
+    (WEEK3_START, WEEK3_END, 0.0808),  # 第三次分发 2026-08-07
+    (WEEK4_START, WEEK4_END, 0.0769),  # 第四次分发 2026-08-14
+]
 
 WEEKLY_REWARD = 200_000.0  # 第 1~4 周奖池：每周 200,000 美元等值 XRP（按当周币安公布价格折算币数）
 WEEK5_WEEKLY_REWARD = 250_000.0  # 第五周奖池提高至 250,000 美元等值 XRP
-ACTIVITY_APR = 0.2238
 ANNUAL_REWARD_POOL = WEEKLY_REWARD * 365 / 7  # 10,428,571.43（第 1~4 周，用于实际 APR 反推利用金额）
 WEEK5_ANNUAL_REWARD_POOL = WEEK5_WEEKLY_REWARD * 365 / 7  # 13,035,714.29（第五周预估用）
-WEEK1_UTILIZED = WEEKLY_REWARD / (ACTIVITY_APR * 7 / 365)  # ≈ 46,597,730
 
 MAX_WORKERS = 3  # 并发压低 + 4 节点轮询，避免触发免费 RPC 限流
 
@@ -92,63 +98,71 @@ def fetch_hours(timestamps):
     return results
 
 
-def compute_params(hours_map):
-    """第一周参数（历史参考）+ 第四周实际 APR 校准参数（用于第五周预估）。
+def linear_fit(xs, ys):
+    """最小二乘拟合 y = kx + b，返回 (k, b, 残差标准差 sigma)"""
+    n = len(xs)
+    mx, my = sum(xs) / n, sum(ys) / n
+    sxx = sum((x - mx) ** 2 for x in xs)
+    sxy = sum((x - mx) * (y - my) for x, y in zip(xs, ys))
+    k = sxy / sxx
+    b = my - k * mx
+    dof = max(n - 2, 1)
+    sigma = math.sqrt(sum((y - k * x - b) ** 2 for x, y in zip(xs, ys)) / dof)
+    return k, b, sigma
 
-    第四周实际 APR 已由币安公布（WEEK4_ACTUAL_APR），第四周奖励池仍为 200,000，
-    故第四周利用金额 = 第 1~4 周年化池 ÷ 第四周实际 APR；
-    第四周利用率/未利用额用第四周的小时快照等权平均计算。
+
+def compute_params(hours_map):
+    """四周实际 APR 反推各周利用金额，线性拟合 利用金额 = k × 总存款 + b（第五周预估用）。
+
+    已结算四周奖池均为每周 200,000 美元等值 XRP，故各周利用金额 = 年化池 ÷ 该周实际 APR；
+    自变量为该周小时快照等权平均的总存款。乐观/悲观口径 = 拟合值 ∓ 残差标准差 sigma，
+    由同一拟合线整体平移得到，保证 乐观 ≥ 中间 ≥ 悲观 不倒挂。
     第五周奖池提高至 250,000（WEEK5_ANNUAL_REWARD_POOL），预估时替换分子。
     """
-    w1 = [hours_map[ts]["total"]
-          for ts in range(WEEK1_START, WEEK1_END, 3600)
-          if ts in hours_map and hours_map[ts]]
-    if len(w1) < 160:
-        raise RuntimeError(f"第一周窗口数据不足（{len(w1)}/168），无法计算参数")
-    avg1 = sum(w1) / len(w1)
-
-    w4 = [hours_map[ts]["total"]
-          for ts in range(WEEK4_START, WEEK4_END, 3600)
-          if ts in hours_map and hours_map[ts]]
-    if len(w4) < 160:
-        raise RuntimeError(f"第四周窗口数据不足（{len(w4)}/168），无法校准参数")
-    avg4 = sum(w4) / len(w4)
-    utilized4 = ANNUAL_REWARD_POOL / WEEK4_ACTUAL_APR  # ≈ 135.61M（按第四周 200,000 池反推）
-    utilization4 = utilized4 / avg4
+    weeks = []
+    for start, end, apr in SETTLED_WEEKS:
+        totals = [hours_map[ts]["total"]
+                  for ts in range(start, end, 3600)
+                  if ts in hours_map and hours_map[ts]]
+        if len(totals) < 160:
+            raise RuntimeError(f"{iso(start)} 周窗口数据不足（{len(totals)}/168），无法拟合")
+        avg = sum(totals) / len(totals)
+        weeks.append({
+            "window": [iso(start), iso(end)],
+            "snapshot_hours": len(totals),
+            "actual_apr": apr,
+            "avg_deposit": round(avg, 2),
+            "utilized": round(ANNUAL_REWARD_POOL / apr, 2),
+        })
+    k, b, sigma = linear_fit([w["avg_deposit"] for w in weeks],
+                             [w["utilized"] for w in weeks])
     return {
         "weekly_reward": WEEK5_WEEKLY_REWARD,
-        "activity_apr": ACTIVITY_APR,
         "annual_reward_pool": round(WEEK5_ANNUAL_REWARD_POOL, 2),
         "prediction_target": "week5",
-        "apr_display_start": iso(WEEK4_END),  # 曲线只显示第五周，第四周已是实际值无预估意义
-        # 第一周（已结算，历史参考）
-        "week1_window": [iso(WEEK1_START), iso(WEEK1_END)],
-        "week1_snapshot_hours": len(w1),
-        "week1_avg_deposit": round(avg1, 2),
-        "week1_utilized": round(WEEK1_UTILIZED, 2),
-        "week1_utilization": round(WEEK1_UTILIZED / avg1, 6),
-        "week1_unused": round(avg1 - WEEK1_UTILIZED, 2),
-        # 第四周（实际 APR 校准，第五周预估的基础）
-        "week4_window": [iso(WEEK4_START), iso(WEEK4_END)],
-        "week4_snapshot_hours": len(w4),
-        "week4_actual_apr": WEEK4_ACTUAL_APR,
-        "week4_avg_deposit": round(avg4, 2),
-        "week4_utilized": round(utilized4, 2),
-        "week4_utilization": round(utilization4, 6),
-        "week4_unused": round(avg4 - utilized4, 2),
+        "apr_display_start": iso(WEEK4_END),  # 曲线只显示第五周，前四周已是实际值无预估意义
+        "fit_slope": round(k, 6),
+        "fit_intercept": round(b, 2),
+        "fit_sigma": round(sigma, 2),
+        "fit_weeks": weeks,
     }
 
 
 def apply_apr(entry, params):
-    """按最新小时余额计算第五周三种预估 APR（%，第五周 250,000 池 + 第四周校准参数）"""
+    """按最新小时余额用拟合线计算第五周预估 APR（%，第五周 250,000 池）。
+
+    利用金额 = k × total + b；乐观/悲观 = 拟合值 ∓ sigma，恒有 乐观 ≥ 中间 ≥ 悲观。
+    """
     total = entry["total"]
     pool = WEEK5_ANNUAL_REWARD_POOL
-    apr_opt = pool / (total * params["week4_utilization"]) * 100
-    utilized_pes = total - params["week4_unused"]
-    apr_pes = pool / utilized_pes * 100 if utilized_pes > 0 else None
-    entry["apr_optimistic"] = round(apr_opt, 4)
-    entry["apr_pessimistic"] = round(apr_pes, 4) if apr_pes is not None else None
-    entry["apr_mid"] = round((apr_opt + apr_pes) / 2, 4) if apr_pes is not None else None
+    fit = params["fit_slope"] * total + params["fit_intercept"]
+    sigma = params["fit_sigma"]
+    if fit - sigma <= 0:  # 总存款过低使拟合利用金额 ≤ 0，模型失效
+        entry["apr_optimistic"] = entry["apr_mid"] = entry["apr_pessimistic"] = None
+        return entry
+    entry["apr_optimistic"] = round(pool / (fit - sigma) * 100, 4)
+    entry["apr_mid"] = round(pool / fit * 100, 4)
+    entry["apr_pessimistic"] = round(pool / (fit + sigma) * 100, 4)
     return entry
 
 
