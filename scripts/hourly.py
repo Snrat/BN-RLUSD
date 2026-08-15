@@ -98,25 +98,13 @@ def fetch_hours(timestamps):
     return results
 
 
-def linear_fit(xs, ys):
-    """最小二乘拟合 y = kx + b，返回 (k, b, 残差标准差 sigma)"""
-    n = len(xs)
-    mx, my = sum(xs) / n, sum(ys) / n
-    sxx = sum((x - mx) ** 2 for x in xs)
-    sxy = sum((x - mx) * (y - my) for x, y in zip(xs, ys))
-    k = sxy / sxx
-    b = my - k * mx
-    dof = max(n - 2, 1)
-    sigma = math.sqrt(sum((y - k * x - b) ** 2 for x, y in zip(xs, ys)) / dof)
-    return k, b, sigma
-
-
 def compute_params(hours_map):
-    """四周实际 APR 反推各周利用金额，线性拟合 利用金额 = k × 总存款 + b（第五周预估用）。
+    """四周实际 APR 反推各周利用金额与未利用资金，按未利用资金的周际趋势预估第五周。
 
-    已结算四周奖池均为每周 200,000 美元等值 XRP，故各周利用金额 = 年化池 ÷ 该周实际 APR；
-    自变量为该周小时快照等权平均的总存款。乐观/悲观口径 = 拟合值 ∓ 残差标准差 sigma，
-    由同一拟合线整体平移得到，保证 乐观 ≥ 中间 ≥ 悲观 不倒挂。
+    已结算四周奖池均为每周 200,000 美元等值 XRP，故各周利用金额 = 年化池 ÷ 该周实际 APR。
+    四周未利用资金（周均总存款 − 利用金额）是各候选量中波动最小的（38~49M），
+    对其按周序号做最小二乘，外推第五周取值（含变化方向）；
+    预估时 利用金额 = 当前总存款 − 第五周未利用预期值。
     第五周奖池提高至 250,000（WEEK5_ANNUAL_REWARD_POOL），预估时替换分子。
     """
     weeks = []
@@ -127,42 +115,53 @@ def compute_params(hours_map):
         if len(totals) < 160:
             raise RuntimeError(f"{iso(start)} 周窗口数据不足（{len(totals)}/168），无法拟合")
         avg = sum(totals) / len(totals)
+        utilized = ANNUAL_REWARD_POOL / apr
         weeks.append({
             "window": [iso(start), iso(end)],
             "snapshot_hours": len(totals),
             "actual_apr": apr,
             "avg_deposit": round(avg, 2),
-            "utilized": round(ANNUAL_REWARD_POOL / apr, 2),
+            "utilized": round(utilized, 2),
+            "unused": round(avg - utilized, 2),
         })
-    k, b, sigma = linear_fit([w["avg_deposit"] for w in weeks],
-                             [w["utilized"] for w in weeks])
+    unused = [w["unused"] for w in weeks]
+    unused_avg = sum(unused) / len(unused)
+
+    # 未利用资金的周际趋势：对 (周序号 1..4, 未利用资金) 做最小二乘，
+    # 外推第 5 周取值作为第五周未利用资金预期（含变化方向），sigma 为趋势残差
+    xs = list(range(1, len(weeks) + 1))
+    xm = sum(xs) / len(xs)
+    sxx = sum((x - xm) ** 2 for x in xs)
+    slope = sum((x - xm) * (u - unused_avg) for x, u in zip(xs, unused)) / sxx  # 每周变化量
+    unused_w5 = unused_avg + slope * (len(weeks) + 1 - xm)
+    sigma = math.sqrt(
+        sum((u - (unused_avg + slope * (x - xm))) ** 2 for x, u in zip(xs, unused))
+        / (len(xs) - 2))
     return {
         "weekly_reward": WEEK5_WEEKLY_REWARD,
         "annual_reward_pool": round(WEEK5_ANNUAL_REWARD_POOL, 2),
         "prediction_target": "week5",
         "apr_display_start": iso(WEEK4_END),  # 曲线只显示第五周，前四周已是实际值无预估意义
-        "fit_slope": round(k, 6),
-        "fit_intercept": round(b, 2),
-        "fit_sigma": round(sigma, 2),
+        "unused_avg": round(unused_avg, 2),
+        "unused_per_week": round(slope, 2),
+        "unused_week5": round(unused_w5, 2),
+        "unused_sigma": round(sigma, 2),
         "fit_weeks": weeks,
     }
 
 
 def apply_apr(entry, params):
-    """按最新小时余额用拟合线计算第五周预估 APR（%，第五周 250,000 池）。
+    """按最新小时余额计算第五周预估 APR（%，第五周 250,000 池）。
 
-    利用金额 = k × total + b；乐观/悲观 = 拟合值 ∓ sigma，恒有 乐观 ≥ 中间 ≥ 悲观。
+    利用金额 = total − 第五周未利用资金预期值（四周未利用资金的周际趋势外推）；
+    总存款 ≤ 未利用预期值时模型失效，曲线留空。
     """
+    entry.pop("apr_optimistic", None)  # 清理旧的三口径字段
+    entry.pop("apr_pessimistic", None)
+    entry.pop("apr_mid", None)
     total = entry["total"]
-    pool = WEEK5_ANNUAL_REWARD_POOL
-    fit = params["fit_slope"] * total + params["fit_intercept"]
-    sigma = params["fit_sigma"]
-    if fit - sigma <= 0:  # 总存款过低使拟合利用金额 ≤ 0，模型失效
-        entry["apr_optimistic"] = entry["apr_mid"] = entry["apr_pessimistic"] = None
-        return entry
-    entry["apr_optimistic"] = round(pool / (fit - sigma) * 100, 4)
-    entry["apr_mid"] = round(pool / fit * 100, 4)
-    entry["apr_pessimistic"] = round(pool / (fit + sigma) * 100, 4)
+    utilized = total - params["unused_week5"]
+    entry["apr"] = round(WEEK5_ANNUAL_REWARD_POOL / utilized * 100, 4) if utilized > 0 else None
     return entry
 
 

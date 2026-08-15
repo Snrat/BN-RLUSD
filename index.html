@@ -72,7 +72,7 @@
     background: linear-gradient(135deg, #7c3aed, #2563eb);
     -webkit-background-clip: text; background-clip: text; color: transparent;
   }
-  .opt .v { color: #22c55e; } .mid .v { color: #3b82f6; } .pes .v { color: #ef4444; }
+  .mid .v { color: #3b82f6; }
 
   .panel {
     background: var(--panel); border: 1px solid var(--border);
@@ -95,9 +95,7 @@
 
   <div class="cards">
     <div class="card hero"><div class="k">RLUSD 总量</div><div class="v" id="c-total">–</div></div>
-    <div class="card opt"><div class="k">乐观 APR（利用率恒定）</div><div class="v" id="c-opt">–</div></div>
-    <div class="card mid"><div class="k">中间 APR</div><div class="v" id="c-mid">–</div></div>
-    <div class="card pes"><div class="k">悲观 APR（闲置恒定）</div><div class="v" id="c-pes">–</div></div>
+    <div class="card mid"><div class="k">预估第五周 APR</div><div class="v" id="c-apr">–</div></div>
     <div class="card"><div class="k">数据更新至</div><div class="v" id="c-time" style="font-size:16px">–</div></div>
   </div>
 
@@ -139,24 +137,21 @@ function render(data) {
   const c = themeColors();
 
   document.getElementById('c-total').textContent = fmtNum(last.total);
-  document.getElementById('c-opt').textContent = fmtNum(last.apr_optimistic, 2) + '%';
-  document.getElementById('c-mid').textContent = fmtNum(last.apr_mid, 2) + '%';
-  document.getElementById('c-pes').textContent = last.apr_pessimistic == null ? '–'
-    : fmtNum(last.apr_pessimistic, 2) + '%';
+  document.getElementById('c-apr').textContent = last.apr == null ? '–' : fmtNum(last.apr, 2) + '%';
   document.getElementById('c-time').textContent = toUTC8(last.t) + ' (UTC+8)';
 
   const p = data.params;
-  const sign = p.fit_intercept >= 0 ? '+' : '−';
   document.getElementById('params-note').textContent =
     `模型：第五周奖池 ${fmtNum(p.weekly_reward)} 美元等值 XRP（年化池 ${fmtNum(p.annual_reward_pool)}），` +
-    `APR = 年化池 ÷ 利用金额。利用金额 = ${p.fit_slope.toFixed(4)} × 总存款 ${sign} ` +
-    `${(Math.abs(p.fit_intercept) / 1e6).toFixed(1)}M，由已结算四周的实际 APR 反推利用金额、` +
-    `对各周均总存款做线性拟合（残差 ±${(p.fit_sigma / 1e6).toFixed(1)}M）：` +
+    `APR = 年化池 ÷ 利用金额。四周未利用资金（总存款 − 利用金额）波动最小，按周际趋势外推第五周：` +
     p.fit_weeks.map((w, i) =>
       `第${'一二三四'[i]}周实际 ${(w.actual_apr * 100).toFixed(2)}%（日均存款 ` +
-      `${(w.avg_deposit / 1e6).toFixed(1)}M → 利用 ${(w.utilized / 1e6).toFixed(1)}M）`).join('，') + '。' +
-    `乐观/悲观 = 拟合利用金额 ∓ 残差，由同一拟合线平移得到，恒有乐观 ≥ 中间 ≥ 悲观。` +
-    `注：总存款过低使拟合利用金额 ≤ 0 时模型失效，曲线留空。`;
+      `${(w.avg_deposit / 1e6).toFixed(1)}M → 利用 ${(w.utilized / 1e6).toFixed(1)}M，` +
+      `未利用 ${(w.unused / 1e6).toFixed(1)}M）`).join('，') + '。' +
+    `未利用资金周际变化 ${(p.unused_per_week / 1e6).toFixed(1)}M/周，第五周预期 ` +
+    `${(p.unused_week5 / 1e6).toFixed(1)}M（趋势残差 ±${(p.unused_sigma / 1e6).toFixed(1)}M），` +
+    `利用金额 = 总存款 − 该预期值。` +
+    `注：总存款 ≤ 未利用预期值时模型失效，曲线留空。`;
 
   Chart.defaults.color = c.text;
   Chart.defaults.borderColor = c.grid;
@@ -200,9 +195,7 @@ function render(data) {
   const aprCfg = {
     type: 'line',
     data: { labels: aprLabels, datasets: [
-      { label: '乐观 APR', data: aprHours.map(h => h.apr_optimistic), borderColor: '#22c55e' },
-      { label: '中间 APR', data: aprHours.map(h => h.apr_mid), borderColor: '#3b82f6' },
-      { label: '悲观 APR', data: aprHours.map(h => h.apr_pessimistic), borderColor: '#ef4444' },
+      { label: '预估 APR', data: aprHours.map(h => h.apr), borderColor: '#3b82f6' },
     ]},
     options: { ...common, scales: { ...common.scales,
       y: { ...common.scales.y, ticks: { callback: v => (+v).toFixed(2) + '%' } } },
