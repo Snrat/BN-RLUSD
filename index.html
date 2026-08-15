@@ -105,7 +105,7 @@
   </div>
 
   <div class="panel">
-    <h2>预估第五周 APR（四周实际 APR 线性拟合）</h2>
+    <h2>第一~五周 APR（拟合曲线）</h2>
     <div class="chart-box"><canvas id="chartApr"></canvas></div>
     <div class="note" id="params-note"></div>
   </div>
@@ -151,6 +151,7 @@ function render(data) {
     `未利用资金周际变化 ${(p.unused_per_week / 1e6).toFixed(1)}M/周，第五周预期 ` +
     `${(p.unused_week5 / 1e6).toFixed(1)}M（趋势残差 ±${(p.unused_sigma / 1e6).toFixed(1)}M），` +
     `利用金额 = 总存款 − 该预期值。` +
+    `曲线第一~四周按当周 200,000 池回算、第五周按 250,000 池，故 08-14 处含奖池提升的跳变。` +
     `注：总存款 ≤ 未利用预期值时模型失效，曲线留空。`;
 
   Chart.defaults.color = c.text;
@@ -187,7 +188,7 @@ function render(data) {
         } } } },
   };
 
-  // APR 预估只从第四周结算后开始显示（之前已是实际值，预估无意义）
+  // APR 拟合曲线覆盖第一~五周（前四周按当周 200K 池回算，第五周按 250K 池）
   const aprStart = data.params.apr_display_start;
   const aprHours = hours.filter(h => h.t >= aprStart);
   const aprLabels = aprHours.map(h => toUTC8(h.t));
@@ -195,7 +196,7 @@ function render(data) {
   const aprCfg = {
     type: 'line',
     data: { labels: aprLabels, datasets: [
-      { label: '预估 APR', data: aprHours.map(h => h.apr), borderColor: '#3b82f6' },
+      { label: 'APR（拟合）', data: aprHours.map(h => h.apr), borderColor: '#3b82f6', spanGaps: true },
     ]},
     options: { ...common, scales: { ...common.scales,
       y: { ...common.scales.y, ticks: { callback: v => (+v).toFixed(2) + '%' } } },

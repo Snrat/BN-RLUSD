@@ -141,7 +141,7 @@ def compute_params(hours_map):
         "weekly_reward": WEEK5_WEEKLY_REWARD,
         "annual_reward_pool": round(WEEK5_ANNUAL_REWARD_POOL, 2),
         "prediction_target": "week5",
-        "apr_display_start": iso(WEEK4_END),  # 曲线只显示第五周，前四周已是实际值无预估意义
+        "apr_display_start": iso(WEEK1_START),  # 曲线覆盖第一~五周：前四周画实际 APR，第五周画预估值
         "unused_avg": round(unused_avg, 2),
         "unused_per_week": round(slope, 2),
         "unused_week5": round(unused_w5, 2),
@@ -151,17 +151,19 @@ def compute_params(hours_map):
 
 
 def apply_apr(entry, params):
-    """按最新小时余额计算第五周预估 APR（%，第五周 250,000 池）。
+    """按小时余额计算拟合 APR（%）：利用金额 = total − 第五周未利用预期值。
 
-    利用金额 = total − 第五周未利用资金预期值（四周未利用资金的周际趋势外推）；
+    已结算周（< 8/14 08:00 UTC+8）按当周 200,000 池回算，第五周按 250,000 池，
+    故曲线在周均意义上与实际 APR 吻合，并在 08-14 处含奖池提升的跳变。
     总存款 ≤ 未利用预期值时模型失效，曲线留空。
     """
     entry.pop("apr_optimistic", None)  # 清理旧的三口径字段
     entry.pop("apr_pessimistic", None)
     entry.pop("apr_mid", None)
     total = entry["total"]
+    pool = ANNUAL_REWARD_POOL if entry["t"] < iso(WEEK4_END) else WEEK5_ANNUAL_REWARD_POOL
     utilized = total - params["unused_week5"]
-    entry["apr"] = round(WEEK5_ANNUAL_REWARD_POOL / utilized * 100, 4) if utilized > 0 else None
+    entry["apr"] = round(pool / utilized * 100, 4) if utilized > 0 else None
     return entry
 
 
