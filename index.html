@@ -107,7 +107,7 @@
   </div>
 
   <div class="panel">
-    <h2>预估第四周 APR（基于第三周实际 8.08% 校准）</h2>
+    <h2>预估第五周 APR（基于第四周实际 7.69% 校准）</h2>
     <div class="chart-box"><canvas id="chartApr"></canvas></div>
     <div class="note" id="params-note"></div>
   </div>
@@ -148,13 +148,13 @@ function render(data) {
   const p = data.params;
   document.getElementById('params-note').textContent =
     `模型：周奖励固定 ${fmtNum(p.weekly_reward)} 美元等值 XRP（年化池 ${fmtNum(p.annual_reward_pool)}），` +
-    `APR = 年化池 ÷ 利用金额。第三周（${p.week3_window[0].slice(0,10)} ~ ${p.week3_window[1].slice(0,10)}，` +
-    `实际 APR ${(p.week3_actual_apr * 100).toFixed(2)}%，${p.week3_snapshot_hours} 个小时快照等权平均）：` +
-    `日均存款 ${fmtNum(p.week3_avg_deposit)}，利用金额 ${fmtNum(p.week3_utilized)}，` +
-    `利用率 ${(p.week3_utilization * 100).toFixed(2)}%，未利用 ${fmtNum(p.week3_unused)}。` +
-    `乐观 = 利用率保持第三周水平 ${(p.week3_utilization * 100).toFixed(2)}%；` +
-    `悲观 = 未利用资金保持第三周水平，其余资金全部参与瓜分。` +
-    `注：当总存款低于第三周未利用资金时，悲观口径下利用金额 ≤ 0，模型失效，曲线留空。`;
+    `APR = 年化池 ÷ 利用金额。第四周（${p.week4_window[0].slice(0,10)} ~ ${p.week4_window[1].slice(0,10)}，` +
+    `实际 APR ${(p.week4_actual_apr * 100).toFixed(2)}%，${p.week4_snapshot_hours} 个小时快照等权平均）：` +
+    `日均存款 ${fmtNum(p.week4_avg_deposit)}，利用金额 ${fmtNum(p.week4_utilized)}，` +
+    `利用率 ${(p.week4_utilization * 100).toFixed(2)}%，未利用 ${fmtNum(p.week4_unused)}。` +
+    `乐观 = 利用率保持第四周水平 ${(p.week4_utilization * 100).toFixed(2)}%；` +
+    `悲观 = 未利用资金保持第四周水平，其余资金全部参与瓜分。` +
+    `注：当总存款低于第四周未利用资金时，悲观口径下利用金额 ≤ 0，模型失效，曲线留空。`;
 
   Chart.defaults.color = c.text;
   Chart.defaults.borderColor = c.grid;
@@ -190,7 +190,7 @@ function render(data) {
         } } } },
   };
 
-  // APR 预估只从第三周结算后开始显示（之前已是实际值，预估无意义）
+  // APR 预估只从第四周结算后开始显示（之前已是实际值，预估无意义）
   const aprStart = data.params.apr_display_start || data.params.week1_window[1];
   const aprHours = hours.filter(h => h.t >= aprStart);
   const aprLabels = aprHours.map(h => toUTC8(h.t));
