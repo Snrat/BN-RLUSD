@@ -156,10 +156,11 @@ def compute_params(hours_map):
 
 
 def apply_apr(entry, params, day_min_total):
-    """按当日（UTC+0 自然日）迄今最低持仓计算拟合 APR（%）。
+    """按所在 UTC+0 自然日的最低持仓计算拟合 APR（%）。
 
-    币安按 UTC+0 00:00~24:00 内最低持仓统计，故每个小时点使用其所在自然日
-    00:00 起至该时刻的最低总存款作为计息基数。
+    币安按 UTC+0 00:00~24:00 内最低持仓统计当日计息基数，故同一自然日内
+    所有小时点共用该日全天最低总存款（日内恒定）；当天尚未完结时，
+    自然只能取当日迄今最低值，随新低出现而阶梯式更新。
     已结算周（< 8/14 08:00 UTC+8）按当周 200,000 池与当周实际未利用资金回算，
     曲线与实际 APR 精确吻合；第五周按 250,000 池与外推的未利用预期值计算，
     故曲线在 08-14 处含奖池提升的跳变。
@@ -192,16 +193,17 @@ def load_data():
 def save_data(hours_map):
     """hours_map: {ts: entry}。重算参数与 APR 后写回 data.json"""
     params = compute_params(hours_map)
-    entries = []
-    day_min = {}  # UTC+0 自然日 -> 当日迄今最低总存款
-    for ts in sorted(hours_map):
-        entry = hours_map[ts]
+    # 先按 UTC+0 自然日汇总全天最低总存款（已完结日取全天最低，
+    # 当天未完结时即为迄今最低），同一日内 APR 恒定
+    day_min = {}
+    for ts, entry in hours_map.items():
         if not entry:
             continue
         day = ts // 86400
         prev = day_min.get(day)
         day_min[day] = entry["total"] if prev is None else min(prev, entry["total"])
-        entries.append(apply_apr(entry, params, day_min[day]))
+    entries = [apply_apr(hours_map[ts], params, day_min[ts // 86400])
+               for ts in sorted(hours_map) if hours_map[ts]]
     data = {
         "updated": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "params": params,

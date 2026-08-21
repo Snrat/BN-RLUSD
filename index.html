@@ -140,7 +140,7 @@ function render(data) {
   document.getElementById('params-note').textContent =
     `模型：第五周奖池 ${fmtNum(p.weekly_reward)} 美元等值 XRP（年化池 ${fmtNum(p.annual_reward_pool)}），` +
     `APR = 年化池 ÷ 利用金额。按币安规则，以 UTC+0 自然日（00:00~24:00）内最低持仓为当日计息基数，` +
-    `APR 曲线中每个小时点取当日迄今最低总存款计算。四周未利用资金（日均最低持仓 − 利用金额）波动最小，按周际趋势外推第五周：` +
+    `同一日内 APR 恒定（当天未完结时取迄今最低，随新低阶梯更新）。四周未利用资金（日均最低持仓 − 利用金额）波动最小，按周际趋势外推第五周：` +
     p.fit_weeks.map((w, i) =>
       `第${'一二三四'[i]}周实际 ${(w.actual_apr * 100).toFixed(2)}%（日均最低持仓 ` +
       `${(w.min_deposit_avg / 1e6).toFixed(1)}M → 利用 ${(w.utilized / 1e6).toFixed(1)}M，` +
