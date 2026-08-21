@@ -40,7 +40,7 @@ WEEK5_ANNUAL_REWARD_POOL = WEEK5_WEEKLY_REWARD * 365 / 7  # 13,035,714.29（第�
 
 MAX_WORKERS = 3  # 并发压低 + 4 节点轮询，避免触发免费 RPC 限流
 
-BYBIT_START = int(datetime(2026, 8, 19, 8, 0, 0, tzinfo=timezone.utc).timestamp())  # Bybit 统计起点 8/19 08:00 (UTC)
+BYBIT_START = int(datetime(2026, 8, 19, 0, 0, 0, tzinfo=timezone.utc).timestamp())  # Bybit 统计起点 8/19 08:00 (UTC+8)
 BYBIT_BASE_APR = 0.035  # 基础 APR 固定 3.5%
 # 已知各 UTC+0 自然日的额外 APR（按当日 24h 最低持仓计算），新分发公布后在此补充
 BYBIT_KNOWN_EXTRA_APR = {
