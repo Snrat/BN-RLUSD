@@ -101,28 +101,33 @@ def fetch_hours(timestamps):
 def compute_params(hours_map):
     """四周实际 APR 反推各周利用金额与未利用资金，按未利用资金的周际趋势预估第五周。
 
+    币安按 UTC+0 自然日（00:00~24:00）内用户最低持仓统计当日有效金额，
+    故每周统计口径为：日内各整点快照取最小值得当日持仓，再对周内 7 天取平均。
     已结算四周奖池均为每周 200,000 美元等值 XRP，故各周利用金额 = 年化池 ÷ 该周实际 APR。
-    四周未利用资金（周均总存款 − 利用金额）是各候选量中波动最小的（38~49M），
-    对其按周序号做最小二乘，外推第五周取值（含变化方向）；
-    预估时 利用金额 = 当前总存款 − 第五周未利用预期值。
+    四周未利用资金（日均最低持仓 − 利用金额）对其按周序号做最小二乘，
+    外推第五周取值（含变化方向）；预估时 利用金额 = 当日最低持仓 − 第五周未利用预期值。
     第五周奖池提高至 250,000（WEEK5_ANNUAL_REWARD_POOL），预估时替换分子。
     """
     weeks = []
     for start, end, apr in SETTLED_WEEKS:
-        totals = [hours_map[ts]["total"]
-                  for ts in range(start, end, 3600)
-                  if ts in hours_map and hours_map[ts]]
-        if len(totals) < 160:
-            raise RuntimeError(f"{iso(start)} 周窗口数据不足（{len(totals)}/168），无法拟合")
-        avg = sum(totals) / len(totals)
+        by_day = {}
+        n_hours = 0
+        for ts in range(start, end, 3600):
+            if ts in hours_map and hours_map[ts]:
+                n_hours += 1
+                by_day.setdefault(ts // 86400, []).append(hours_map[ts]["total"])
+        daily_mins = [min(v) for v in by_day.values()]
+        if len(daily_mins) < 7 or n_hours < 160:
+            raise RuntimeError(f"{iso(start)} 周窗口数据不足（{len(daily_mins)} 天 / {n_hours} 小时），无法拟合")
+        min_avg = sum(daily_mins) / len(daily_mins)
         utilized = ANNUAL_REWARD_POOL / apr
         weeks.append({
             "window": [iso(start), iso(end)],
-            "snapshot_hours": len(totals),
+            "snapshot_hours": n_hours,
             "actual_apr": apr,
-            "avg_deposit": round(avg, 2),
+            "min_deposit_avg": round(min_avg, 2),
             "utilized": round(utilized, 2),
-            "unused": round(avg - utilized, 2),
+            "unused": round(min_avg - utilized, 2),
         })
     unused = [w["unused"] for w in weeks]
     unused_avg = sum(unused) / len(unused)
@@ -150,19 +155,29 @@ def compute_params(hours_map):
     }
 
 
-def apply_apr(entry, params):
-    """按小时余额计算拟合 APR（%）：利用金额 = total − 第五周未利用预期值。
+def apply_apr(entry, params, day_min_total):
+    """按当日（UTC+0 自然日）迄今最低持仓计算拟合 APR（%）。
 
-    已结算周（< 8/14 08:00 UTC+8）按当周 200,000 池回算，第五周按 250,000 池，
-    故曲线在周均意义上与实际 APR 吻合，并在 08-14 处含奖池提升的跳变。
-    总存款 ≤ 未利用预期值时模型失效，曲线留空。
+    币安按 UTC+0 00:00~24:00 内最低持仓统计，故每个小时点使用其所在自然日
+    00:00 起至该时刻的最低总存款作为计息基数。
+    已结算周（< 8/14 08:00 UTC+8）按当周 200,000 池与当周实际未利用资金回算，
+    曲线与实际 APR 精确吻合；第五周按 250,000 池与外推的未利用预期值计算，
+    故曲线在 08-14 处含奖池提升的跳变。
+    当日最低持仓 ≤ 未利用资金时模型失效，曲线留空。
     """
     entry.pop("apr_optimistic", None)  # 清理旧的三口径字段
     entry.pop("apr_pessimistic", None)
     entry.pop("apr_mid", None)
-    total = entry["total"]
-    pool = ANNUAL_REWARD_POOL if entry["t"] < iso(WEEK4_END) else WEEK5_ANNUAL_REWARD_POOL
-    utilized = total - params["unused_week5"]
+    t = entry["t"]
+    if t < iso(WEEK4_END):
+        pool = ANNUAL_REWARD_POOL
+        unused = next((w["unused"] for w in params["fit_weeks"]
+                       if w["window"][0] <= t < w["window"][1]),
+                      params["unused_week5"])
+    else:
+        pool = WEEK5_ANNUAL_REWARD_POOL
+        unused = params["unused_week5"]
+    utilized = day_min_total - unused
     entry["apr"] = round(pool / utilized * 100, 4) if utilized > 0 else None
     return entry
 
@@ -177,8 +192,16 @@ def load_data():
 def save_data(hours_map):
     """hours_map: {ts: entry}。重算参数与 APR 后写回 data.json"""
     params = compute_params(hours_map)
-    entries = [apply_apr(hours_map[ts], params)
-               for ts in sorted(hours_map) if hours_map[ts]]
+    entries = []
+    day_min = {}  # UTC+0 自然日 -> 当日迄今最低总存款
+    for ts in sorted(hours_map):
+        entry = hours_map[ts]
+        if not entry:
+            continue
+        day = ts // 86400
+        prev = day_min.get(day)
+        day_min[day] = entry["total"] if prev is None else min(prev, entry["total"])
+        entries.append(apply_apr(entry, params, day_min[day]))
     data = {
         "updated": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "params": params,

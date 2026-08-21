@@ -90,7 +90,7 @@
 <div class="wrap">
   <header>
     <h1><span class="dot"></span>币安 RLUSD 实时统计 & APR 预估</h1>
-    <div class="sub">活动自 2026-07-17 08:00 (UTC+8) 起 · 每小时快照 · 数据每小时更新 · 页面每 10 分钟自动刷新</div>
+    <div class="sub">活动自 2026-07-17 08:00 (UTC+8) 起 · 每小时快照 · APR 按 UTC+0 自然日（00:00~24:00）最低持仓口径计算 · 数据每小时更新 · 页面每 10 分钟自动刷新</div>
   </header>
 
   <div class="cards">
@@ -139,16 +139,17 @@ function render(data) {
   const p = data.params;
   document.getElementById('params-note').textContent =
     `模型：第五周奖池 ${fmtNum(p.weekly_reward)} 美元等值 XRP（年化池 ${fmtNum(p.annual_reward_pool)}），` +
-    `APR = 年化池 ÷ 利用金额。四周未利用资金（总存款 − 利用金额）波动最小，按周际趋势外推第五周：` +
+    `APR = 年化池 ÷ 利用金额。按币安规则，以 UTC+0 自然日（00:00~24:00）内最低持仓为当日计息基数，` +
+    `APR 曲线中每个小时点取当日迄今最低总存款计算。四周未利用资金（日均最低持仓 − 利用金额）波动最小，按周际趋势外推第五周：` +
     p.fit_weeks.map((w, i) =>
-      `第${'一二三四'[i]}周实际 ${(w.actual_apr * 100).toFixed(2)}%（日均存款 ` +
-      `${(w.avg_deposit / 1e6).toFixed(1)}M → 利用 ${(w.utilized / 1e6).toFixed(1)}M，` +
+      `第${'一二三四'[i]}周实际 ${(w.actual_apr * 100).toFixed(2)}%（日均最低持仓 ` +
+      `${(w.min_deposit_avg / 1e6).toFixed(1)}M → 利用 ${(w.utilized / 1e6).toFixed(1)}M，` +
       `未利用 ${(w.unused / 1e6).toFixed(1)}M）`).join('，') + '。' +
     `未利用资金周际变化 ${(p.unused_per_week / 1e6).toFixed(1)}M/周，第五周预期 ` +
     `${(p.unused_week5 / 1e6).toFixed(1)}M（趋势残差 ±${(p.unused_sigma / 1e6).toFixed(1)}M），` +
-    `利用金额 = 总存款 − 该预期值。` +
-    `曲线第一~四周按当周 200,000 池回算、第五周按 250,000 池，故 08-14 处含奖池提升的跳变。` +
-    `注：总存款 ≤ 未利用预期值时模型失效，曲线留空。`;
+    `利用金额 = 当日最低持仓 − 该预期值。` +
+    `曲线第一~四周按当周 200,000 池与当周实际未利用资金回算（与实际 APR 吻合）、第五周按 250,000 池与外推值计算，故 08-14 处含奖池提升的跳变。` +
+    `注：当日最低持仓 ≤ 未利用预期值时模型失效，曲线留空。`;
 
   Chart.defaults.color = c.text;
   Chart.defaults.borderColor = c.grid;
@@ -174,7 +175,8 @@ function render(data) {
         borderColor: '#14b8a6', backgroundColor: 'rgba(20,184,166,0.22)',
         fill: true, stack: 'chain', yAxisID: 'y' },
       { label: 'APR（拟合）', data: hours.map(h => h.apr),
-        borderColor: '#f97316', borderWidth: 3, yAxisID: 'y1', spanGaps: true, order: -1 },
+        borderColor: '#f97316', borderWidth: 3, yAxisID: 'y1', spanGaps: true,
+        stepped: 'before', order: -1 },
     ]},
     options: { ...common,
       scales: { x: common.scales.x,
