@@ -95,6 +95,7 @@
 
   <div class="cards">
     <div class="card hero"><div class="k">RLUSD 总量</div><div class="v" id="c-total">–</div></div>
+    <div class="card"><div class="k">Bybit RLUSD 总量</div><div class="v" id="c-bybit">–</div></div>
     <div class="card mid"><div class="k">预估第五周 APR</div><div class="v" id="c-apr">–</div></div>
     <div class="card"><div class="k">数据更新至</div><div class="v" id="c-time" style="font-size:16px">–</div></div>
   </div>
@@ -103,6 +104,12 @@
     <h2>RLUSD 总量 &amp; 第一~五周 APR（拟合曲线）</h2>
     <div class="chart-box"><canvas id="chartMain"></canvas></div>
     <div class="note" id="params-note"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Bybit RLUSD 总量（自 2026-08-19 08:00 UTC 起统计）</h2>
+    <div class="chart-box"><canvas id="chartBybit"></canvas></div>
+    <div class="note">Bybit 公示地址：ETH 链 0x6242…dc9f / 0xf440…b9bc，XRP 链 rDgB…8UVr / rJn2…apQh，每小时快照。</div>
   </div>
 
   <div id="status"></div>
@@ -118,7 +125,7 @@ const toUTC8 = t => {
 const darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
 const cssVar = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
-let chartMain = null, cached = null;
+let chartMain = null, chartBybit = null, cached = null;
 
 function themeColors() {
   return { text: cssVar('--muted'), grid: cssVar('--grid'), purple: cssVar('--purple'),
@@ -133,6 +140,9 @@ function render(data) {
   const c = themeColors();
 
   document.getElementById('c-total').textContent = fmtNum(last.total);
+  const bybitHours = data.hours.filter(h => h.bybit_total != null);
+  const lastBybit = bybitHours[bybitHours.length - 1];
+  document.getElementById('c-bybit').textContent = lastBybit ? fmtNum(lastBybit.bybit_total) : '–';
   document.getElementById('c-apr').textContent = last.apr == null ? '–' : fmtNum(last.apr, 2) + '%';
   document.getElementById('c-time').textContent = toUTC8(last.t) + ' (UTC+8)';
 
@@ -197,6 +207,30 @@ function render(data) {
 
   if (chartMain) chartMain.destroy();
   chartMain = new Chart(document.getElementById('chartMain'), mainCfg);
+
+  // Bybit 图：ETH+XRP 堆叠余额（仅 08-19 08:00 UTC 起有数据）
+  const bybitCfg = {
+    type: 'line',
+    data: { labels: bybitHours.map(h => toUTC8(h.t)), datasets: [
+      { label: 'ETH 链', data: bybitHours.map(h => h.bybit_eth),
+        borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,0.22)',
+        fill: true, stack: 'chain' },
+      { label: 'XRP 链', data: bybitHours.map(h => h.bybit_xrp),
+        borderColor: '#14b8a6', backgroundColor: 'rgba(20,184,166,0.22)',
+        fill: true, stack: 'chain' },
+    ]},
+    options: { ...common,
+      scales: { x: common.scales.x,
+        y: { ...common.scales.y, stacked: true,
+             ticks: { callback: v => (v / 1e6).toFixed(0) + 'M' } } },
+      plugins: { ...common.plugins,
+        tooltip: { callbacks: {
+          label: ctx => ` ${ctx.dataset.label}: ${fmtNum(ctx.parsed.y)}`,
+          footer: items => ` 总量: ${fmtNum(items.reduce((s, i) => s + i.parsed.y, 0))}`,
+        } } } },
+  };
+  if (chartBybit) chartBybit.destroy();
+  chartBybit = new Chart(document.getElementById('chartBybit'), bybitCfg);
 }
 
 async function load() {

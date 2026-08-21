@@ -11,5 +11,5 @@ if __name__ == "__main__":
           f" | 第五周预期 {p['unused_week5']:,.0f} | 残差 ±{p['unused_sigma']:,.0f}")
     for i, w in enumerate(p["fit_weeks"]):
         print(f"  第{i + 1}周({w['snapshot_hours']}h快照) 实际 {w['actual_apr']:.2%}"
-              f" | 日均存款 {w['avg_deposit']:,.0f} | 利用 {w['utilized']:,.0f}"
+              f" | 日均最低持仓 {w['min_deposit_avg']:,.0f} | 利用 {w['utilized']:,.0f}"
               f" | 未利用 {w['unused']:,.0f}")

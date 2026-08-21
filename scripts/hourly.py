@@ -40,6 +40,8 @@ WEEK5_ANNUAL_REWARD_POOL = WEEK5_WEEKLY_REWARD * 365 / 7  # 13,035,714.29（第�
 
 MAX_WORKERS = 3  # 并发压低 + 4 节点轮询，避免触发免费 RPC 限流
 
+BYBIT_START = int(datetime(2026, 8, 19, 8, 0, 0, tzinfo=timezone.utc).timestamp())  # Bybit 统计起点 8/19 08:00 (UTC)
+
 
 def iso(ts):
     return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%dT%H:00:00Z")
@@ -70,17 +72,27 @@ class Anchors:
 
 
 def fetch_hour(ts, anchors):
-    """抓取某一整点（unix 秒）的 ETH/XRP 余额合计，失败返回 None"""
+    """抓取某一整点（unix 秒）的币安/Bybit ETH/XRP 余额合计，失败返回 None
+
+    Bybit 地址仅自 BYBIT_START（2026-08-19 08:00 UTC）起统计，更早的小时不带该字段。
+    """
     block = anchors.block_at(ts)
     ledger = anchors.ledger_at(ts)
     try:
         eth = rpc.eth_total_at(block)
         xrp = rpc.xrp_total_at(ledger)
+        entry = {"t": iso(ts), "eth": round(eth, 2), "xrp": round(xrp, 2),
+                 "total": round(eth + xrp, 2)}
+        if ts >= BYBIT_START:
+            bybit_eth = rpc.eth_total_at(block, rpc.BYBIT_ETH_ADDRESSES)
+            bybit_xrp = rpc.xrp_total_at(ledger, rpc.BYBIT_XRP_ADDRESSES)
+            entry["bybit_eth"] = round(bybit_eth, 2)
+            entry["bybit_xrp"] = round(bybit_xrp, 2)
+            entry["bybit_total"] = round(bybit_eth + bybit_xrp, 2)
     except Exception as e:  # noqa: BLE001
         print(f"  [失败] {iso(ts)}: {e}")
         return None
-    return {"t": iso(ts), "eth": round(eth, 2), "xrp": round(xrp, 2),
-            "total": round(eth + xrp, 2)}
+    return entry
 
 
 def fetch_hours(timestamps):

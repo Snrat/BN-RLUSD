@@ -34,6 +34,16 @@ XRP_ADDRESSES = [
 ]
 XRP_ISSUER = "rMxCKbEDwqr76QuheSUMdEGf4B9xJ8m5De"
 
+# Bybit 热钱包（2026-08 公示）
+BYBIT_ETH_ADDRESSES = [
+    "0x62425cD6BDcB6bFE51558EA465B063486B70dc9f",
+    "0xf440139a62b2B939699C5b3e09F88E40464Ab9bc",
+]
+BYBIT_XRP_ADDRESSES = [
+    "rDgBDkeTe5rbtRn2DJP8kHvQTuw28h8UVr",
+    "rJn2zAPdFA193sixJwuFixRkYDUtx3apQh",
+]
+
 RIPPLE_EPOCH_OFFSET = 946684800  # XRPL 时间 = unix 时间 - 此偏移
 
 BALANCE_OF_SELECTOR = "0x70a08231"
@@ -112,8 +122,9 @@ def eth_find_block_at_or_before(ts):
     return lo, eth_block_timestamp(lo)
 
 
-def eth_rlusd_balances(block_number):
-    """返回指定区块 5 个地址的 RLUSD 余额列表（优先 JSON-RPC 批量请求）"""
+def eth_rlusd_balances(block_number, addresses=None):
+    """返回指定区块各地址的 RLUSD 余额列表（优先 JSON-RPC 批量请求）"""
+    addrs = addresses if addresses is not None else ETH_ADDRESSES
     block_tag = hex(block_number)
     calls = [
         {
@@ -124,7 +135,7 @@ def eth_rlusd_balances(block_number):
                 block_tag,
             ],
         }
-        for i, addr in enumerate(ETH_ADDRESSES)
+        for i, addr in enumerate(addrs)
     ]
     try:
         results = eth_rpc(calls)
@@ -140,8 +151,8 @@ def eth_rlusd_balances(block_number):
         return out
 
 
-def eth_total_at(block_number):
-    return sum(eth_rlusd_balances(block_number))
+def eth_total_at(block_number, addresses=None):
+    return sum(eth_rlusd_balances(block_number, addresses))
 
 
 # ---------------- XRP ----------------
@@ -190,5 +201,6 @@ def xrp_rlusd_balance(account, ledger_index):
     return sum(float(l["balance"]) for l in lines)
 
 
-def xrp_total_at(ledger_index):
-    return sum(xrp_rlusd_balance(a, ledger_index) for a in XRP_ADDRESSES)
+def xrp_total_at(ledger_index, addresses=None):
+    addrs = addresses if addresses is not None else XRP_ADDRESSES
+    return sum(xrp_rlusd_balance(a, ledger_index) for a in addrs)
