@@ -107,9 +107,9 @@
   </div>
 
   <div class="panel">
-    <h2>Bybit RLUSD 总量（自 2026-08-19 08:00 UTC 起统计）</h2>
+    <h2>Bybit RLUSD 总量 &amp; APR 预估（自 2026-08-19 08:00 UTC 起统计）</h2>
     <div class="chart-box"><canvas id="chartBybit"></canvas></div>
-    <div class="note">Bybit 公示地址：ETH 链 0x6242…dc9f / 0xf440…b9bc，XRP 链 rDgB…8UVr / rJn2…apQh，每小时快照。</div>
+    <div class="note" id="bybit-note"></div>
   </div>
 
   <div id="status"></div>
@@ -209,7 +209,15 @@ function render(data) {
   if (chartMain) chartMain.destroy();
   chartMain = new Chart(document.getElementById('chartMain'), mainCfg);
 
-  // Bybit 图：ETH+XRP 堆叠余额（仅 08-19 08:00 UTC 起有数据）
+  // Bybit 图：ETH+XRP 堆叠余额（左轴）+ APR 曲线（右轴，基础 3.5% 固定 + 额外按日最低持仓）
+  const bp = data.params.bybit || {};
+  const knownDays = Object.entries(bp.known_extra_apr || {})
+    .map(([d, a]) => `${d.slice(5)} 额外 ${(a * 100).toFixed(2)}%`).join('，');
+  document.getElementById('bybit-note').textContent =
+    `模型：基础 APR 固定 ${(bp.base_apr * 100).toFixed(1)}%；额外 APR 按 UTC+0 自然日最低持仓计算，` +
+    `日奖池由已公布日反推约 ${fmtNum(bp.daily_reward_pool)} 美元/天（已知 ${knownDays} 采用实际值），` +
+    `预估日 额外 APR = 日奖池 ÷ 当日最低持仓 × 365，同一日内 APR 恒定（当天未完结取迄今最低）。` +
+    `Bybit 公示地址：ETH 链 0x6242…dc9f / 0xf440…b9bc，XRP 链 rDgB…8UVr / rJn2…apQh，每小时快照。`;
   const bybitCfg = {
     type: 'line',
     data: { labels: bybitHours.map(h => toUTC8(h.t)), datasets: [
@@ -219,15 +227,24 @@ function render(data) {
       { label: 'XRP 链', data: bybitHours.map(h => h.bybit_xrp),
         borderColor: '#14b8a6', backgroundColor: 'rgba(20,184,166,0.22)',
         fill: true, stack: 'chain' },
+      { label: 'APR（基础+额外）', data: bybitHours.map(h => h.bybit_apr),
+        borderColor: '#f97316', borderWidth: 3, yAxisID: 'y1', spanGaps: true,
+        stepped: 'before', order: -1 },
     ]},
     options: { ...common,
       scales: { x: common.scales.x,
         y: { ...common.scales.y, stacked: true,
-             ticks: { callback: v => (v / 1e6).toFixed(0) + 'M' } } },
+             ticks: { callback: v => (v / 1e6).toFixed(0) + 'M' } },
+        y1: { position: 'right', border: { display: false },
+              grid: { drawOnChartArea: false },
+              ticks: { color: '#f97316', callback: v => (+v).toFixed(2) + '%' } } },
       plugins: { ...common.plugins,
         tooltip: { callbacks: {
-          label: ctx => ` ${ctx.dataset.label}: ${fmtNum(ctx.parsed.y)}`,
-          footer: items => ` 总量: ${fmtNum(items.reduce((s, i) => s + i.parsed.y, 0))}`,
+          label: ctx => ctx.dataset.yAxisID === 'y1'
+            ? ` ${ctx.dataset.label}: ${fmtNum(ctx.parsed.y, 2)}%`
+            : ` ${ctx.dataset.label}: ${fmtNum(ctx.parsed.y)}`,
+          footer: items => ` 总量: ${fmtNum(items.filter(i => i.dataset.yAxisID !== 'y1')
+            .reduce((s, i) => s + i.parsed.y, 0))}`,
         } } } },
   };
   if (chartBybit) chartBybit.destroy();

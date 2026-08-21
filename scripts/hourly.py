@@ -41,6 +41,13 @@ WEEK5_ANNUAL_REWARD_POOL = WEEK5_WEEKLY_REWARD * 365 / 7  # 13,035,714.29（第�
 MAX_WORKERS = 3  # 并发压低 + 4 节点轮询，避免触发免费 RPC 限流
 
 BYBIT_START = int(datetime(2026, 8, 19, 8, 0, 0, tzinfo=timezone.utc).timestamp())  # Bybit 统计起点 8/19 08:00 (UTC)
+BYBIT_BASE_APR = 0.035  # 基础 APR 固定 3.5%
+# 已知各 UTC+0 自然日的额外 APR（按当日 24h 最低持仓计算），新分发公布后在此补充
+BYBIT_KNOWN_EXTRA_APR = {
+    "2026-08-19": 0.09,    # 启动日，固定利率
+    "2026-08-20": 0.0718,  # 奖池制：额外 APR = 日奖池 ÷ 当日最低持仓 × 365
+}
+BYBIT_FIXED_EXTRA_DAYS = {"2026-08-19"}  # 固定利率日不参与日奖池反推
 
 
 def iso(ts):
@@ -207,9 +214,48 @@ def load_data():
     return {"updated": None, "params": None, "hours": []}
 
 
+def apply_bybit_apr(hours_map, params):
+    """Bybit APR：基础 3.5% 固定 + 额外 APR（按 UTC+0 自然日最低持仓计算）。
+
+    额外 APR = 日奖池 ÷ 当日最低持仓 × 365。日奖池由已公布额外 APR 的非固定日
+    反推（剔除启动日等固定利率日）；已公布的自然日直接使用实际值，
+    同一日内所有小时点共用该日全天最低持仓（日内恒定，当天未完结取迄今最低）。
+    """
+    day_min = {}
+    for ts, entry in hours_map.items():
+        if entry and entry.get("bybit_total") is not None:
+            day = ts // 86400
+            prev = day_min.get(day)
+            day_min[day] = entry["bybit_total"] if prev is None else min(prev, entry["bybit_total"])
+    pools = []
+    for day_str, apr in BYBIT_KNOWN_EXTRA_APR.items():
+        if day_str in BYBIT_FIXED_EXTRA_DAYS:
+            continue
+        day = int(datetime.strptime(day_str, "%Y-%m-%d")
+                  .replace(tzinfo=timezone.utc).timestamp()) // 86400
+        if day in day_min:
+            pools.append(apr * day_min[day] / 365)
+    daily_pool = sum(pools) / len(pools) if pools else None
+    params["bybit"] = {
+        "base_apr": BYBIT_BASE_APR,
+        "daily_reward_pool": round(daily_pool, 2) if daily_pool else None,
+        "known_extra_apr": BYBIT_KNOWN_EXTRA_APR,
+    }
+    for ts, entry in hours_map.items():
+        if not entry or entry.get("bybit_total") is None:
+            continue
+        day = ts // 86400
+        extra = BYBIT_KNOWN_EXTRA_APR.get(entry["t"][:10])
+        if extra is None and daily_pool:
+            extra = daily_pool / day_min[day] * 365
+        entry["bybit_apr"] = (round((BYBIT_BASE_APR + extra) * 100, 4)
+                              if extra is not None else None)
+
+
 def save_data(hours_map):
     """hours_map: {ts: entry}。重算参数与 APR 后写回 data.json"""
     params = compute_params(hours_map)
+    apply_bybit_apr(hours_map, params)
     # 先按 UTC+0 自然日汇总全天最低总存款（已完结日取全天最低，
     # 当天未完结时即为迄今最低），同一日内 APR 恒定
     day_min = {}
