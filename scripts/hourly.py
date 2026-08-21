@@ -25,12 +25,12 @@ WEEK4_START = WEEK3_END  # 8/7 08:00 (UTC+8)
 WEEK4_END = int(datetime(2026, 8, 14, 0, 0, 0, tzinfo=timezone.utc).timestamp())  # 8/14 08:00 (UTC+8)
 # 已结算四周的实际 APR（币安公布）。奖励按美元等值 XRP 计算，币安公布的 XRP 计价价格
 # （1.1077 / 1.0827 / 1.0351 / 1.0094）只用于折算发放币数，不影响 USD 口径 APR
-# (周开始, 周结束, 实际 APR)
+# (周开始, 周结束, 实际 APR, 异常标记)
 SETTLED_WEEKS = [
-    (WEEK1_START, WEEK1_END, 0.2225),  # 第一次分发 2026-07-24
-    (WEEK2_START, WEEK2_END, 0.0822),  # 第二次分发 2026-07-31
-    (WEEK3_START, WEEK3_END, 0.0808),  # 第三次分发 2026-08-07
-    (WEEK4_START, WEEK4_END, 0.0769),  # 第四次分发 2026-08-14
+    (WEEK1_START, WEEK1_END, 0.2225, None),  # 第一次分发 2026-07-24
+    (WEEK2_START, WEEK2_END, 0.0822, None),  # 第二次分发 2026-07-31
+    (WEEK3_START, WEEK3_END, 0.0808, "夏日理财季活动"),  # 第三次分发 2026-08-07；活动推高未利用资金，趋势外推时剔除
+    (WEEK4_START, WEEK4_END, 0.0769, None),  # 第四次分发 2026-08-14
 ]
 
 WEEKLY_REWARD = 200_000.0  # 第 1~4 周奖池：每周 200,000 美元等值 XRP（按当周币安公布价格折算币数）
@@ -116,12 +116,13 @@ def compute_params(hours_map):
     币安按 UTC+0 自然日（00:00~24:00）内用户最低持仓统计当日有效金额，
     故每周统计口径为：日内各整点快照取最小值得当日持仓，再对周内 7 天取平均。
     已结算四周奖池均为每周 200,000 美元等值 XRP，故各周利用金额 = 年化池 ÷ 该周实际 APR。
-    四周未利用资金（日均最低持仓 − 利用金额）对其按周序号做最小二乘，
+    第三周未利用资金因夏日理财季活动异常升高（SETTLED_WEEKS 中标记），
+    趋势外推时剔除异常周，对其余各周按周序号做最小二乘——剔除后趋势为下降，
     外推第五周取值（含变化方向）；预估时 利用金额 = 当日最低持仓 − 第五周未利用预期值。
     第五周奖池提高至 250,000（WEEK5_ANNUAL_REWARD_POOL），预估时替换分子。
     """
     weeks = []
-    for start, end, apr in SETTLED_WEEKS:
+    for i, (start, end, apr, anomaly) in enumerate(SETTLED_WEEKS):
         by_day = {}
         n_hours = 0
         for ts in range(start, end, 3600):
@@ -140,29 +141,33 @@ def compute_params(hours_map):
             "min_deposit_avg": round(min_avg, 2),
             "utilized": round(utilized, 2),
             "unused": round(min_avg - utilized, 2),
+            "anomaly": anomaly,
         })
     unused = [w["unused"] for w in weeks]
-    unused_avg = sum(unused) / len(unused)
 
-    # 未利用资金的周际趋势：对 (周序号 1..4, 未利用资金) 做最小二乘，
-    # 外推第 5 周取值作为第五周未利用资金预期（含变化方向），sigma 为趋势残差
-    xs = list(range(1, len(weeks) + 1))
+    # 未利用资金的周际趋势：剔除异常周（如夏日理财季活动推高的第三周）后，
+    # 对 (周序号, 未利用资金) 做最小二乘，外推第五周取值；sigma 为趋势残差
+    fit = [(i + 1, w["unused"]) for i, w in enumerate(weeks) if not w["anomaly"]]
+    xs = [x for x, _ in fit]
+    vals = [u for _, u in fit]
     xm = sum(xs) / len(xs)
+    um = sum(vals) / len(vals)
     sxx = sum((x - xm) ** 2 for x in xs)
-    slope = sum((x - xm) * (u - unused_avg) for x, u in zip(xs, unused)) / sxx  # 每周变化量
-    unused_w5 = unused_avg + slope * (len(weeks) + 1 - xm)
+    slope = sum((x - xm) * (u - um) for x, u in fit) / sxx  # 每周变化量
+    unused_w5 = um + slope * (len(weeks) + 1 - xm)
+    dof = max(len(fit) - 2, 1)
     sigma = math.sqrt(
-        sum((u - (unused_avg + slope * (x - xm))) ** 2 for x, u in zip(xs, unused))
-        / (len(xs) - 2))
+        sum((u - (um + slope * (x - xm))) ** 2 for x, u in fit) / dof)
     return {
         "weekly_reward": WEEK5_WEEKLY_REWARD,
         "annual_reward_pool": round(WEEK5_ANNUAL_REWARD_POOL, 2),
         "prediction_target": "week5",
         "apr_display_start": iso(WEEK1_START),  # 曲线覆盖第一~五周：前四周画实际 APR，第五周画预估值
-        "unused_avg": round(unused_avg, 2),
+        "unused_avg": round(um, 2),
         "unused_per_week": round(slope, 2),
         "unused_week5": round(unused_w5, 2),
         "unused_sigma": round(sigma, 2),
+        "excluded_anomaly_weeks": [i + 1 for i, w in enumerate(weeks) if w["anomaly"]],
         "fit_weeks": weeks,
     }
 
