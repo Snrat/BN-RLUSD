@@ -96,12 +96,12 @@
   <div class="cards">
     <div class="card hero"><div class="k">RLUSD 总量</div><div class="v" id="c-total">–</div></div>
     <div class="card"><div class="k">Bybit RLUSD 总量</div><div class="v" id="c-bybit">–</div></div>
-    <div class="card mid"><div class="k">预估第五周 APR</div><div class="v" id="c-apr">–</div></div>
+    <div class="card mid"><div class="k">预估第六周 APR</div><div class="v" id="c-apr">–</div></div>
     <div class="card"><div class="k">数据更新至</div><div class="v" id="c-time" style="font-size:16px">–</div></div>
   </div>
 
   <div class="panel">
-    <h2>RLUSD 总量 &amp; 第一~五周 APR（拟合曲线）</h2>
+    <h2>RLUSD 总量 &amp; 第一~六周 APR（拟合曲线）</h2>
     <div class="chart-box"><canvas id="chartMain"></canvas></div>
     <div class="note" id="params-note"></div>
   </div>
@@ -147,19 +147,22 @@ function render(data) {
   document.getElementById('c-time').textContent = toUTC8(last.t) + ' (UTC+8)';
 
   const p = data.params;
+  const CN = '一二三四五六';
   document.getElementById('params-note').textContent =
-    `模型：第五周奖池 ${fmtNum(p.weekly_reward)} 美元等值 XRP（年化池 ${fmtNum(p.annual_reward_pool)}），` +
-    `APR = 年化池 ÷ 利用金额。按币安规则，以 UTC+0 自然日（00:00~24:00）内最低持仓为当日计息基数，` +
+    `模型：第六周奖池未公布，暂按与第五周相同 ${fmtNum(p.weekly_reward)} 美元等值 XRP/周` +
+    `（年化池 ${fmtNum(p.annual_reward_pool)}）假设，APR = 年化池 ÷ 利用金额。` +
+    `按币安规则，以 UTC+0 自然日（00:00~24:00）内最低持仓为当日计息基数，` +
     `同一日内 APR 恒定（当天未完结时取迄今最低，随新低阶梯更新）。各周未利用资金（日均最低持仓 − 利用金额）：` +
     p.fit_weeks.map((w, i) =>
-      `第${'一二三四'[i]}周实际 ${(w.actual_apr * 100).toFixed(2)}%（日均最低持仓 ` +
+      `第${CN[i]}周实际 ${(w.actual_apr * 100).toFixed(2)}%（日均最低持仓 ` +
       `${(w.min_deposit_avg / 1e6).toFixed(1)}M → 利用 ${(w.utilized / 1e6).toFixed(1)}M，` +
       `未利用 ${(w.unused / 1e6).toFixed(1)}M${w.anomaly ? '，受' + w.anomaly + '影响异常' : ''}）`).join('，') + '。' +
-    `趋势外推剔除异常周（第${p.excluded_anomaly_weeks.map(i => '一二三四'[i - 1]).join('、')}周）后，` +
-    `未利用资金周际变化 ${(p.unused_per_week / 1e6).toFixed(1)}M/周（下降趋势），第五周预期 ` +
-    `${(p.unused_week5 / 1e6).toFixed(1)}M（趋势残差 ±${(p.unused_sigma / 1e6).toFixed(1)}M），` +
+    `趋势外推剔除异常周（第${p.excluded_anomaly_weeks.map(i => CN[i - 1]).join('、')}周）后，` +
+    `未利用资金周际变化 ${(p.unused_per_week / 1e6).toFixed(1)}M/周（下降趋势），第六周预期 ` +
+    `${(p.unused_next_week / 1e6).toFixed(1)}M（趋势残差 ±${(p.unused_sigma / 1e6).toFixed(1)}M），` +
     `利用金额 = 当日最低持仓 − 该预期值。` +
-    `曲线第一~四周按当周 200,000 池与当周实际未利用资金回算（与实际 APR 吻合）、第五周按 250,000 池与外推值计算，故 08-14 处含奖池提升的跳变。` +
+    `曲线第一~五周按当周奖池与实际未利用资金回算（与实际 APR 吻合，08-14 处含奖池 200k→250k 提升的跳变）、` +
+    `第六周按假设奖池与外推值计算。` +
     `注：当日最低持仓 ≤ 未利用预期值时模型失效，曲线留空。`;
 
   Chart.defaults.color = c.text;

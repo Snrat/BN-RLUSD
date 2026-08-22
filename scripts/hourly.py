@@ -23,20 +23,21 @@ WEEK3_START = WEEK2_END  # 7/31 08:00 (UTC+8)
 WEEK3_END = int(datetime(2026, 8, 7, 0, 0, 0, tzinfo=timezone.utc).timestamp())  # 8/7 08:00 (UTC+8)
 WEEK4_START = WEEK3_END  # 8/7 08:00 (UTC+8)
 WEEK4_END = int(datetime(2026, 8, 14, 0, 0, 0, tzinfo=timezone.utc).timestamp())  # 8/14 08:00 (UTC+8)
-# 已结算四周的实际 APR（币安公布）。奖励按美元等值 XRP 计算，币安公布的 XRP 计价价格
-# （1.1077 / 1.0827 / 1.0351 / 1.0094）只用于折算发放币数，不影响 USD 口径 APR
-# (周开始, 周结束, 实际 APR, 异常标记)
+WEEK5_START = WEEK4_END  # 8/14 08:00 (UTC+8)
+WEEK5_END = int(datetime(2026, 8, 21, 0, 0, 0, tzinfo=timezone.utc).timestamp())  # 8/21 08:00 (UTC+8)
+# 已结算周的实际 APR（币安公布）。奖励按美元等值 XRP 计算，币安公布的 XRP 计价价格
+# 只用于折算发放币数，不影响 USD 口径 APR
+# (周开始, 周结束, 实际 APR, 当周奖池 USD/周, 异常标记)
 SETTLED_WEEKS = [
-    (WEEK1_START, WEEK1_END, 0.2225, None),  # 第一次分发 2026-07-24
-    (WEEK2_START, WEEK2_END, 0.0822, None),  # 第二次分发 2026-07-31
-    (WEEK3_START, WEEK3_END, 0.0808, "夏日理财季活动"),  # 第三次分发 2026-08-07；活动推高未利用资金，趋势外推时剔除
-    (WEEK4_START, WEEK4_END, 0.0769, None),  # 第四次分发 2026-08-14
+    (WEEK1_START, WEEK1_END, 0.2225, 200_000, None),  # 第一次分发 2026-07-24
+    (WEEK2_START, WEEK2_END, 0.0822, 200_000, None),  # 第二次分发 2026-07-31
+    (WEEK3_START, WEEK3_END, 0.0808, 200_000, "夏日理财季活动"),  # 第三次分发 2026-08-07；活动推高未利用资金，趋势外推时剔除
+    (WEEK4_START, WEEK4_END, 0.0769, 200_000, None),  # 第四次分发 2026-08-14
+    (WEEK5_START, WEEK5_END, 0.082, 250_000, None),  # 第五次分发 2026-08-21
 ]
 
-WEEKLY_REWARD = 200_000.0  # 第 1~4 周奖池：每周 200,000 美元等值 XRP（按当周币安公布价格折算币数）
-WEEK5_WEEKLY_REWARD = 250_000.0  # 第五周奖池提高至 250,000 美元等值 XRP
-ANNUAL_REWARD_POOL = WEEKLY_REWARD * 365 / 7  # 10,428,571.43（第 1~4 周，用于实际 APR 反推利用金额）
-WEEK5_ANNUAL_REWARD_POOL = WEEK5_WEEKLY_REWARD * 365 / 7  # 13,035,714.29（第五周预估用）
+NEXT_WEEK_REWARD = 250_000.0  # 第六周奖池未公布，暂按与第五周相同假设
+NEXT_ANNUAL_REWARD_POOL = NEXT_WEEK_REWARD * 365 / 7  # 13,035,714.29（第六周预估用）
 
 MAX_WORKERS = 3  # 并发压低 + 4 节点轮询，避免触发免费 RPC 限流
 
@@ -119,18 +120,19 @@ def fetch_hours(timestamps):
 
 
 def compute_params(hours_map):
-    """四周实际 APR 反推各周利用金额与未利用资金，按未利用资金的周际趋势预估第五周。
+    """已结算周按实际 APR 反推各周利用金额与未利用资金，按未利用资金周际趋势预估下一周。
 
     币安按 UTC+0 自然日（00:00~24:00）内用户最低持仓统计当日有效金额，
     故每周统计口径为：日内各整点快照取最小值得当日持仓，再对周内 7 天取平均。
-    已结算四周奖池均为每周 200,000 美元等值 XRP，故各周利用金额 = 年化池 ÷ 该周实际 APR。
+    各周利用金额 = 当周年化奖池 ÷ 该周实际 APR。
     第三周未利用资金因夏日理财季活动异常升高（SETTLED_WEEKS 中标记），
-    趋势外推时剔除异常周，对其余各周按周序号做最小二乘——剔除后趋势为下降，
-    外推第五周取值（含变化方向）；预估时 利用金额 = 当日最低持仓 − 第五周未利用预期值。
-    第五周奖池提高至 250,000（WEEK5_ANNUAL_REWARD_POOL），预估时替换分子。
+    趋势外推时剔除异常周，对其余各周按周序号做最小二乘，
+    外推下一周取值；预估时 利用金额 = 当日最低持仓 − 下周未利用预期值。
+    第六周奖池未公布，暂按 NEXT_WEEK_REWARD（与第五周相同）假设。
     """
     weeks = []
-    for i, (start, end, apr, anomaly) in enumerate(SETTLED_WEEKS):
+    for i, (start, end, apr, reward, anomaly) in enumerate(SETTLED_WEEKS):
+        annual_pool = reward * 365 / 7
         by_day = {}
         n_hours = 0
         for ts in range(start, end, 3600):
@@ -141,20 +143,20 @@ def compute_params(hours_map):
         if len(daily_mins) < 7 or n_hours < 160:
             raise RuntimeError(f"{iso(start)} 周窗口数据不足（{len(daily_mins)} 天 / {n_hours} 小时），无法拟合")
         min_avg = sum(daily_mins) / len(daily_mins)
-        utilized = ANNUAL_REWARD_POOL / apr
+        utilized = annual_pool / apr
         weeks.append({
             "window": [iso(start), iso(end)],
             "snapshot_hours": n_hours,
             "actual_apr": apr,
+            "weekly_reward": reward,
             "min_deposit_avg": round(min_avg, 2),
             "utilized": round(utilized, 2),
             "unused": round(min_avg - utilized, 2),
             "anomaly": anomaly,
         })
-    unused = [w["unused"] for w in weeks]
 
     # 未利用资金的周际趋势：剔除异常周（如夏日理财季活动推高的第三周）后，
-    # 对 (周序号, 未利用资金) 做最小二乘，外推第五周取值；sigma 为趋势残差
+    # 对 (周序号, 未利用资金) 做最小二乘，外推下一周取值；sigma 为趋势残差
     fit = [(i + 1, w["unused"]) for i, w in enumerate(weeks) if not w["anomaly"]]
     xs = [x for x, _ in fit]
     vals = [u for _, u in fit]
@@ -162,18 +164,18 @@ def compute_params(hours_map):
     um = sum(vals) / len(vals)
     sxx = sum((x - xm) ** 2 for x in xs)
     slope = sum((x - xm) * (u - um) for x, u in fit) / sxx  # 每周变化量
-    unused_w5 = um + slope * (len(weeks) + 1 - xm)
+    unused_next = um + slope * (len(weeks) + 1 - xm)
     dof = max(len(fit) - 2, 1)
     sigma = math.sqrt(
         sum((u - (um + slope * (x - xm))) ** 2 for x, u in fit) / dof)
     return {
-        "weekly_reward": WEEK5_WEEKLY_REWARD,
-        "annual_reward_pool": round(WEEK5_ANNUAL_REWARD_POOL, 2),
-        "prediction_target": "week5",
-        "apr_display_start": iso(WEEK1_START),  # 曲线覆盖第一~五周：前四周画实际 APR，第五周画预估值
+        "weekly_reward": NEXT_WEEK_REWARD,
+        "annual_reward_pool": round(NEXT_ANNUAL_REWARD_POOL, 2),
+        "prediction_target": f"week{len(weeks) + 1}",
+        "apr_display_start": iso(WEEK1_START),  # 曲线覆盖全部已结算周（实际 APR 回算）+ 当前周（预估）
         "unused_avg": round(um, 2),
         "unused_per_week": round(slope, 2),
-        "unused_week5": round(unused_w5, 2),
+        "unused_next_week": round(unused_next, 2),
         "unused_sigma": round(sigma, 2),
         "excluded_anomaly_weeks": [i + 1 for i, w in enumerate(weeks) if w["anomaly"]],
         "fit_weeks": weeks,
@@ -186,23 +188,22 @@ def apply_apr(entry, params, day_min_total):
     币安按 UTC+0 00:00~24:00 内最低持仓统计当日计息基数，故同一自然日内
     所有小时点共用该日全天最低总存款（日内恒定）；当天尚未完结时，
     自然只能取当日迄今最低值，随新低出现而阶梯式更新。
-    已结算周（< 8/14 08:00 UTC+8）按当周 200,000 池与当周实际未利用资金回算，
-    曲线与实际 APR 精确吻合；第五周按 250,000 池与外推的未利用预期值计算，
-    故曲线在 08-14 处含奖池提升的跳变。
+    已结算周按当周年化奖池与当周实际未利用资金回算，曲线与实际 APR 精确吻合；
+    当前未结算周按 NEXT_ANNUAL_REWARD_POOL（假设）与外推的未利用预期值计算。
     当日最低持仓 ≤ 未利用资金时模型失效，曲线留空。
     """
     entry.pop("apr_optimistic", None)  # 清理旧的三口径字段
     entry.pop("apr_pessimistic", None)
     entry.pop("apr_mid", None)
     t = entry["t"]
-    if t < iso(WEEK4_END):
-        pool = ANNUAL_REWARD_POOL
-        unused = next((w["unused"] for w in params["fit_weeks"]
-                       if w["window"][0] <= t < w["window"][1]),
-                      params["unused_week5"])
+    week = next((w for w in params["fit_weeks"]
+                 if w["window"][0] <= t < w["window"][1]), None)
+    if week:
+        pool = week["weekly_reward"] * 365 / 7
+        unused = week["unused"]
     else:
-        pool = WEEK5_ANNUAL_REWARD_POOL
-        unused = params["unused_week5"]
+        pool = NEXT_ANNUAL_REWARD_POOL
+        unused = params["unused_next_week"]
     utilized = day_min_total - unused
     entry["apr"] = round(pool / utilized * 100, 4) if utilized > 0 else None
     return entry
