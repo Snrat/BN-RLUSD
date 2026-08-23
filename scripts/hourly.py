@@ -51,6 +51,38 @@ BYBIT_KNOWN_EXTRA_APR = {
     "2026-08-22": 0.0321,  # 合计 6.71% = 基础 3.5% + 额外 3.21%
 }
 BYBIT_FIXED_EXTRA_DAYS = {"2026-08-19"}  # 固定利率日不参与日奖池反推
+BYBIT_DAILY_REWARD_XRP = 20_000.0  # 日奖池按 XRP 计：由已公布日反推约 2 万 XRP/天，USD 等值随币价波动
+BINANCE_TICKER = "https://api.binance.com/api/v3/ticker/price?symbol=XRPUSDT"
+BINANCE_KLINES = "https://api.binance.com/api/v3/klines?symbol=XRPUSDT&interval=1d"
+
+
+def _fetch_json(url, timeout=15):
+    import urllib.request
+    req = urllib.request.Request(url, headers={"User-Agent": rpc.USER_AGENT})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return json.loads(resp.read().decode())
+
+
+def xrp_daily_avg_price(day_str):
+    """某 UTC 自然日 XRP/USDT 的 (开+高+低+收)/4 均价，失败返回 None"""
+    try:
+        start = int(datetime.strptime(day_str, "%Y-%m-%d")
+                    .replace(tzinfo=timezone.utc).timestamp()) * 1000
+        klines = _fetch_json(f"{BINANCE_KLINES}&startTime={start}&limit=1")
+        o, h, l, c = (float(klines[0][i]) for i in (1, 2, 3, 4))
+        return (o + h + l + c) / 4
+    except Exception as e:  # noqa: BLE001
+        print(f"  [警告] 获取 {day_str} XRP 日线失败: {e}")
+        return None
+
+
+def xrp_latest_price():
+    """XRP/USDT 最新价，失败返回 None"""
+    try:
+        return float(_fetch_json(BINANCE_TICKER)["price"])
+    except Exception as e:  # noqa: BLE001
+        print(f"  [警告] 获取 XRP 最新价失败: {e}")
+        return None
 
 
 def iso(ts):
@@ -220,9 +252,11 @@ def load_data():
 def apply_bybit_apr(hours_map, params):
     """Bybit APR：基础 3.5% 固定 + 额外 APR（按 UTC+0 自然日最低持仓计算）。
 
-    额外 APR = 日奖池 ÷ 当日最低持仓 × 365。日奖池由已公布额外 APR 的非固定日
-    反推（剔除启动日等固定利率日）；已公布的自然日直接使用实际值，
+    日奖池按 XRP 计（约 2 万 XRP/天）：由已公布额外 APR 的非固定日结合当日
+    XRP 均价反推 XRP 池大小；预估日 额外 APR = XRP 池 × 当前 XRP 价格
+    ÷ 当日最低持仓 × 365。已公布的自然日直接使用实际值，
     同一日内所有小时点共用该日全天最低持仓（日内恒定，当天未完结取迄今最低）。
+    价格接口不可用时回退为 USD 口径（已公布日反推的 USD 奖池均值）。
     """
     day_min = {}
     for ts, entry in hours_map.items():
@@ -230,18 +264,27 @@ def apply_bybit_apr(hours_map, params):
             day = ts // 86400
             prev = day_min.get(day)
             day_min[day] = entry["bybit_total"] if prev is None else min(prev, entry["bybit_total"])
-    pools = []
+    pools_xrp, pools_usd = [], []
     for day_str, apr in BYBIT_KNOWN_EXTRA_APR.items():
         if day_str in BYBIT_FIXED_EXTRA_DAYS:
             continue
         day = int(datetime.strptime(day_str, "%Y-%m-%d")
                   .replace(tzinfo=timezone.utc).timestamp()) // 86400
-        if day in day_min:
-            pools.append(apr * day_min[day] / 365)
-    daily_pool = sum(pools) / len(pools) if pools else None
+        if day not in day_min:
+            continue
+        pools_usd.append(apr * day_min[day] / 365)
+        price = xrp_daily_avg_price(day_str)
+        if price:
+            pools_xrp.append(apr * day_min[day] / 365 / price)
+    pool_xrp = sum(pools_xrp) / len(pools_xrp) if pools_xrp else None
+    pool_usd = sum(pools_usd) / len(pools_usd) if pools_usd else None
+    price_now = xrp_latest_price()
     params["bybit"] = {
         "base_apr": BYBIT_BASE_APR,
-        "daily_reward_pool": round(daily_pool, 2) if daily_pool else None,
+        "daily_reward_xrp": round(pool_xrp, 2) if pool_xrp else BYBIT_DAILY_REWARD_XRP,
+        "daily_reward_pool": round(pool_xrp * price_now, 2) if pool_xrp and price_now
+                             else (round(pool_usd, 2) if pool_usd else None),
+        "xrp_price": round(price_now, 4) if price_now else None,
         "known_extra_apr": BYBIT_KNOWN_EXTRA_APR,
     }
     for ts, entry in hours_map.items():
@@ -249,8 +292,11 @@ def apply_bybit_apr(hours_map, params):
             continue
         day = ts // 86400
         extra = BYBIT_KNOWN_EXTRA_APR.get(entry["t"][:10])
-        if extra is None and daily_pool:
-            extra = daily_pool / day_min[day] * 365
+        if extra is None:
+            if pool_xrp and price_now:
+                extra = pool_xrp * price_now / day_min[day] * 365
+            elif pool_usd:
+                extra = pool_usd / day_min[day] * 365
         entry["bybit_apr"] = (round((BYBIT_BASE_APR + extra) * 100, 4)
                               if extra is not None else None)
 

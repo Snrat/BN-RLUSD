@@ -218,8 +218,10 @@ function render(data) {
     .map(([d, a]) => `${d.slice(5)} 额外 ${(a * 100).toFixed(2)}%`).join('，');
   document.getElementById('bybit-note').textContent =
     `模型：基础 APR 固定 ${(bp.base_apr * 100).toFixed(1)}%；额外 APR 按 UTC+0 自然日最低持仓计算，` +
-    `日奖池由已公布日反推约 ${fmtNum(bp.daily_reward_pool)} 美元/天（已知 ${knownDays} 采用实际值），` +
-    `预估日 额外 APR = 日奖池 ÷ 当日最低持仓 × 365，同一日内 APR 恒定（当天未完结取迄今最低）。` +
+    `日奖池按 XRP 计，由已公布日反推约 ${fmtNum(bp.daily_reward_xrp)} XRP/天` +
+    (bp.xrp_price ? `（当前 XRP $${bp.xrp_price}，折 ${fmtNum(bp.daily_reward_pool)} 美元/天）` : '') +
+    `（已知 ${knownDays} 采用实际值），` +
+    `预估日 额外 APR = XRP 日奖池 × 当前 XRP 价格 ÷ 当日最低持仓 × 365，同一日内 APR 恒定（当天未完结取迄今最低）。` +
     `Bybit 公示地址：ETH 链 0x6242…dc9f / 0xf440…b9bc，XRP 链 rDgB…8UVr / rJn2…apQh，每小时快照。`;
   const bybitCfg = {
     type: 'line',
