@@ -94,9 +94,10 @@
   </header>
 
   <div class="cards">
-    <div class="card hero"><div class="k">RLUSD 总量</div><div class="v" id="c-total">–</div></div>
-    <div class="card"><div class="k">Bybit RLUSD 总量</div><div class="v" id="c-bybit">–</div></div>
-    <div class="card mid"><div class="k">预估第六周 APR</div><div class="v" id="c-apr">–</div></div>
+    <div class="card hero"><div class="k">Binance RLUSD 总量</div><div class="v" id="c-total">–</div></div>
+    <div class="card hero"><div class="k">Bybit RLUSD 总量</div><div class="v" id="c-bybit">–</div></div>
+    <div class="card mid"><div class="k">预估 Binance 年化</div><div class="v" id="c-apr">–</div></div>
+    <div class="card mid"><div class="k">预估 Bybit 年化</div><div class="v" id="c-bybit-apr">–</div></div>
     <div class="card"><div class="k">数据更新至</div><div class="v" id="c-time" style="font-size:16px">–</div></div>
   </div>
 
@@ -144,6 +145,8 @@ function render(data) {
   const lastBybit = bybitHours[bybitHours.length - 1];
   document.getElementById('c-bybit').textContent = lastBybit ? fmtNum(lastBybit.bybit_total) : '–';
   document.getElementById('c-apr').textContent = last.apr == null ? '–' : fmtNum(last.apr, 2) + '%';
+  const lastBybitApr = [...bybitHours].reverse().find(h => h.bybit_apr != null);
+  document.getElementById('c-bybit-apr').textContent = lastBybitApr ? fmtNum(lastBybitApr.bybit_apr, 2) + '%' : '–';
   document.getElementById('c-time').textContent = toUTC8(last.t) + ' (UTC+8)';
 
   const p = data.params;
