@@ -65,32 +65,58 @@ def _fetch_json(url, timeout=15):
         return json.loads(resp.read().decode())
 
 
+def _kraken_ohlc(interval_minutes, since_ts=0):
+    """Kraken OHLC 备用源。返回 [time, open, high, low, close, ...] 列表"""
+    url = f"https://api.kraken.com/0/public/OHLC?pair=XRPUSD&interval={interval_minutes}"
+    if since_ts:
+        url += f"&since={since_ts}"
+    r = _fetch_json(url)
+    if r.get("error"):
+        raise RuntimeError(f"Kraken error: {r['error']}")
+    res = r["result"]
+    return res[next(k for k in res if k != "last")]
+
+
 def xrp_daily_avg_price(day_str):
-    """某 UTC 自然日 XRP/USDT 的 (开+高+低+收)/4 均价，失败返回 None"""
+    """某 UTC 自然日 XRP/USD 的 (开+高+低+收)/4 均价（币安日线，失败回退 Kraken）"""
+    day_start = int(datetime.strptime(day_str, "%Y-%m-%d")
+                    .replace(tzinfo=timezone.utc).timestamp())
     try:
-        start = int(datetime.strptime(day_str, "%Y-%m-%d")
-                    .replace(tzinfo=timezone.utc).timestamp()) * 1000
-        klines = _fetch_json(f"{BINANCE_KLINES}&startTime={start}&limit=1")
+        klines = _fetch_json(f"{BINANCE_KLINES}&startTime={day_start * 1000}&limit=1")
         o, h, l, c = (float(klines[0][i]) for i in (1, 2, 3, 4))
         return (o + h + l + c) / 4
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        for k in _kraken_ohlc(1440, day_start - 86400):
+            if int(k[0]) == day_start:
+                return sum(float(x) for x in k[1:5]) / 4
     except Exception as e:  # noqa: BLE001
         print(f"  [警告] 获取 {day_str} XRP 日线失败: {e}")
-        return None
+    return None
 
 
 def xrp_latest_price():
-    """XRP/USDT 最新价，失败返回 None"""
+    """XRP/USD 最新价（币安 ticker，失败回退 Kraken）"""
     try:
         return float(_fetch_json(BINANCE_TICKER)["price"])
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        r = _fetch_json("https://api.kraken.com/0/public/Ticker?pair=XRPUSD")
+        if not r.get("error"):
+            res = r["result"]
+            return float(res[next(iter(res))]["c"][0])
     except Exception as e:  # noqa: BLE001
         print(f"  [警告] 获取 XRP 最新价失败: {e}")
-        return None
+    return None
 
 
 def xrp_hourly_prices(start_ts, end_ts):
-    """批量抓取 [start_ts, end_ts] 的 XRP/USDT 1h K线收盘价，返回 {unix秒: 价格}，失败返回 {}"""
-    prices = {}
+    """批量抓取 [start_ts, end_ts] 的 XRP/USD 1h 收盘价（币安 K线，失败回退 Kraken），
+    返回 {unix秒: 价格}，失败返回 {}"""
     try:
+        prices = {}
         t = start_ts * 1000
         while t <= end_ts * 1000:
             klines = _fetch_json("https://api.binance.com/api/v3/klines"
@@ -102,9 +128,22 @@ def xrp_hourly_prices(start_ts, end_ts):
             t = klines[-1][0] + 3600_000
             if len(klines) < 1000:
                 break
+        if prices:
+            return prices
+    except Exception:  # noqa: BLE001
+        pass
+    try:  # Kraken 备用：单次最多 720 根
+        prices = {}
+        t = start_ts
+        while t <= end_ts:
+            for k in _kraken_ohlc(60, t):
+                if start_ts <= int(k[0]) <= end_ts:
+                    prices[int(k[0])] = float(k[4])
+            t += 720 * 3600
+        return prices
     except Exception as e:  # noqa: BLE001
         print(f"  [警告] 批量获取 XRP 小时价格失败: {e}")
-    return prices
+        return {}
 
 
 def iso(ts):
