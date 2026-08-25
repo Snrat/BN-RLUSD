@@ -87,6 +87,26 @@ def xrp_latest_price():
         return None
 
 
+def xrp_hourly_prices(start_ts, end_ts):
+    """批量抓取 [start_ts, end_ts] 的 XRP/USDT 1h K线收盘价，返回 {unix秒: 价格}，失败返回 {}"""
+    prices = {}
+    try:
+        t = start_ts * 1000
+        while t <= end_ts * 1000:
+            klines = _fetch_json("https://api.binance.com/api/v3/klines"
+                                 f"?symbol=XRPUSDT&interval=1h&startTime={t}&limit=1000")
+            if not klines:
+                break
+            for k in klines:
+                prices[int(k[0]) // 1000] = float(k[4])  # 开盘价时刻 -> 收盘价
+            t = klines[-1][0] + 3600_000
+            if len(klines) < 1000:
+                break
+    except Exception as e:  # noqa: BLE001
+        print(f"  [警告] 批量获取 XRP 小时价格失败: {e}")
+    return prices
+
+
 def iso(ts):
     return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%dT%H:00:00Z")
 
@@ -280,7 +300,10 @@ def apply_bybit_apr(hours_map, params):
             pools_xrp.append(apr * day_min[day] / 365 / price)
     pool_xrp = sum(pools_xrp) / len(pools_xrp) if pools_xrp else None
     pool_usd = sum(pools_usd) / len(pools_usd) if pools_usd else None
-    price_now = xrp_latest_price()
+    # 优先用最新一条小时价格，缺失时回退实时 ticker
+    price_now = next((hours_map[ts]["xrp_usd"] for ts in sorted(hours_map, reverse=True)
+                      if hours_map[ts] and hours_map[ts].get("xrp_usd")), None) \
+        or xrp_latest_price()
     params["bybit"] = {
         "base_apr": BYBIT_BASE_APR,
         "daily_reward_xrp": round(pool_xrp, 2) if pool_xrp else BYBIT_DAILY_REWARD_XRP,
@@ -306,6 +329,12 @@ def apply_bybit_apr(hours_map, params):
 def save_data(hours_map):
     """hours_map: {ts: entry}。重算参数与 APR 后写回 data.json"""
     params = compute_params(hours_map)
+    # 每个小时点附上 XRP/USDT 价格（1h K线收盘价，批量抓取）
+    if hours_map:
+        prices = xrp_hourly_prices(min(hours_map), max(hours_map))
+        for ts, entry in hours_map.items():
+            if entry and ts in prices:
+                entry["xrp_usd"] = prices[ts]
     apply_bybit_apr(hours_map, params)
     # 先按 UTC+0 自然日汇总全天最低总存款（已完结日取全天最低，
     # 当天未完结时即为迄今最低），同一日内 APR 恒定
