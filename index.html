@@ -151,22 +151,24 @@ function render(data) {
 
   const p = data.params;
   const CN = '一二三四五六';
+  const fmtPool = w => w.reward_currency === 'XRP'
+    ? `奖池 ${fmtNum(w.reward)} XRP × 结算价 ${w.settle_price} = $${fmtNum(w.pool_usd)}`
+    : `奖池 $${fmtNum(w.reward)}`;
   document.getElementById('params-note').textContent =
-    `模型：第六周奖池未公布，暂按与第五周相同 ${fmtNum(p.weekly_reward)} 美元等值 XRP/周` +
-    `（年化池 ${fmtNum(p.annual_reward_pool)}）假设，APR = 年化池 ÷ 利用金额。` +
-    `按币安规则，以 UTC+0 自然日（00:00~24:00）内最低持仓为当日计息基数，` +
-    `同一日内 APR 恒定（当天未完结时取迄今最低，随新低阶梯更新）。各周未利用资金（日均最低持仓 − 利用金额）：` +
+    `模型：第六周奖池未公布，暂按与第五周相同 ${fmtNum(p.next_week_reward_xrp)} XRP/周假设；` +
+    `第五周起奖池为固定 XRP 币数，年化按结算时 XRP 价格折 USD 生成` +
+    (p.xrp_price_now ? `（预估用当前价 $${p.xrp_price_now} ≈ 年化池 $${fmtNum(p.annual_reward_pool)}，随币价浮动）` : '') + `。` +
+    `APR = 年化池 ÷ 利用金额。按币安规则，以 UTC+0 自然日（00:00~24:00）内最低持仓为当日计息基数，` +
+    `同一日内 APR 恒定（当天未完结时取迄今最低，随新低阶梯更新）。各周差额（日均最低持仓 − 利用金额）：` +
     p.fit_weeks.map((w, i) =>
-      `第${CN[i]}周实际 ${(w.actual_apr * 100).toFixed(2)}%（日均最低持仓 ` +
+      `第${CN[i]}周实际 ${(w.actual_apr * 100).toFixed(2)}%（${fmtPool(w)}，日均最低持仓 ` +
       `${(w.min_deposit_avg / 1e6).toFixed(1)}M → 利用 ${(w.utilized / 1e6).toFixed(1)}M，` +
-      `未利用 ${(w.unused / 1e6).toFixed(1)}M${w.anomaly ? '，受' + w.anomaly + '影响异常' : ''}）`).join('，') + '。' +
-    `趋势外推剔除异常周（第${p.excluded_anomaly_weeks.map(i => CN[i - 1]).join('、')}周）后，` +
-    `未利用资金周际变化 ${(p.unused_per_week / 1e6).toFixed(1)}M/周（下降趋势），第六周预期 ` +
-    `${(p.unused_next_week / 1e6).toFixed(1)}M（趋势残差 ±${(p.unused_sigma / 1e6).toFixed(1)}M），` +
-    `利用金额 = 当日最低持仓 − 该预期值。` +
-    `曲线第一~五周按当周奖池与实际未利用资金回算（与实际 APR 吻合，08-14 处含奖池 200k→250k 提升的跳变）、` +
-    `第六周按假设奖池与外推值计算。` +
-    `注：当日最低持仓 ≤ 未利用预期值时模型失效，曲线留空。`;
+      `差额 ${(w.unused / 1e6).toFixed(1)}M${w.anomaly ? '，受' + w.anomaly + '影响异常' : ''}` +
+      `${w.unused < 0 ? '，为负说明合格持仓超出追踪地址' : ''}）`).join('，') + '。' +
+    `XRP 奖池周样本仅第五周，第六周差额锚定其实际值 ${(p.unused_next_week / 1e6).toFixed(1)}M（不做趋势外推），` +
+    `利用金额 = 当日最低持仓 − 该值。` +
+    `曲线第一~五周按当周奖池与实际差额回算（与实际 APR 吻合）、第六周按假设池与锚定差额计算。` +
+    `注：当日最低持仓 ≤ 差额时模型失效，曲线留空。`;
 
   Chart.defaults.color = c.text;
   Chart.defaults.borderColor = c.grid;
