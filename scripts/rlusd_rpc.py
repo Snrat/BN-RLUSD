@@ -13,6 +13,7 @@ import urllib.request
 ETH_RPCS = [
     "https://rpc.mevblocker.io",
     "https://eth-mainnet.public.blastapi.io",
+    "https://eth.drpc.org",  # 备用归档节点（压测会限流，仅作兜底）
 ]
 XRP_RPCS = ["https://s1.ripple.com:51234/", "https://s2.ripple.com:51234/"]
 
