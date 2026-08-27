@@ -152,12 +152,12 @@ function render(data) {
   const p = data.params;
   const CN = '一二三四五六';
   const fmtPool = w => w.reward_currency === 'XRP'
-    ? `奖池 ${fmtNum(w.reward)} XRP × 结算价 ${w.settle_price} = $${fmtNum(w.pool_usd)}`
+    ? `奖池 ${fmtNum(w.reward)} XRP 逐日按当日价结算，周日均价 ${w.avg_price} ≈ $${fmtNum(w.pool_usd)}`
     : `奖池 $${fmtNum(w.reward)}`;
   document.getElementById('params-note').textContent =
     `模型：第六周奖池未公布，暂按与第五周相同 ${fmtNum(p.next_week_reward_xrp)} XRP/周假设；` +
-    `第五周起奖池为固定 XRP 币数，年化按结算时 XRP 价格折 USD 生成` +
-    (p.xrp_price_now ? `（预估用当前价 $${p.xrp_price_now} ≈ 年化池 $${fmtNum(p.annual_reward_pool)}，随币价浮动）` : '') + `。` +
+    `第五周起奖池为固定 XRP 币数、按每日 XRP 价格逐日结算` +
+    (p.xrp_price_now ? `（当天用实时价 $${p.xrp_price_now}，已完结日用当日均价）` : '') + `。` +
     `APR = 年化池 ÷ 利用金额。按币安规则，以 UTC+0 自然日（00:00~24:00）内最低持仓为当日计息基数，` +
     `同一日内 APR 恒定（当天未完结时取迄今最低，随新低阶梯更新）。各周差额（日均最低持仓 − 利用金额）：` +
     p.fit_weeks.map((w, i) =>

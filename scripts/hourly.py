@@ -220,28 +220,38 @@ def compute_params(hours_map):
 
     币安按 UTC+0 自然日（00:00~24:00）内用户最低持仓统计当日有效金额，
     故每周统计口径为：日内各整点快照取最小值得当日持仓，再对周内 7 天取平均。
-    各周奖池：USD 周直接按美元计；XRP 周按 币数 × 结算价 折 USD。
+    各周奖池：USD 周直接按美元计；XRP 周按日结算——日奖池 币数/7 每天按当日
+    XRP 均价折 USD，全周奖池 = 币数 × 周日均价均值（小时价格存于 entry["xrp_usd"]，
+    缺失时回退公布的结算价）。
     各周利用金额 = 当周年化奖池(USD) ÷ 该周实际 APR；
-    差额 = 日均最低持仓 − 利用金额（正数=追踪地址超出合格持仓，
-    负数=合格持仓超出追踪地址，如第五周 −29.9M 说明合格口径还含追踪外的资金）。
+    差额 = 日均最低持仓 − 利用金额。
     第三周因夏日理财季活动异常（SETTLED_WEEKS 中标记），外推时剔除；
     且仅使用与下一周同奖池币种（XRP）的周做外推——XRP 池周目前只有第五周，
     故第六周差额直接锚定第五周实际值。
     """
     weeks = []
     for i, (start, end, apr, reward, currency, settle_price, anomaly) in enumerate(SETTLED_WEEKS):
-        pool_usd = reward if currency == "USD" else reward * settle_price
-        annual_pool = pool_usd * 365 / 7
         by_day = {}
         n_hours = 0
+        day_prices = {}
         for ts in range(start, end, 3600):
             if ts in hours_map and hours_map[ts]:
                 n_hours += 1
                 by_day.setdefault(ts // 86400, []).append(hours_map[ts]["total"])
+                if hours_map[ts].get("xrp_usd"):
+                    day_prices.setdefault(ts // 86400, []).append(hours_map[ts]["xrp_usd"])
         daily_mins = [min(v) for v in by_day.values()]
         if len(daily_mins) < 7 or n_hours < 160:
             raise RuntimeError(f"{iso(start)} 周窗口数据不足（{len(daily_mins)} 天 / {n_hours} 小时），无法拟合")
         min_avg = sum(daily_mins) / len(daily_mins)
+        if currency == "USD":
+            pool_usd = float(reward)
+            avg_price = None
+        else:
+            daily_avg = [sum(v) / len(v) for d, v in sorted(day_prices.items()) if v]
+            avg_price = (sum(daily_avg) / len(daily_avg)) if len(daily_avg) >= 7 else settle_price
+            pool_usd = reward * avg_price  # 逐日结算：全周 = 币数 × 日均价均值
+        annual_pool = pool_usd * 365 / 7
         utilized = annual_pool / apr
         weeks.append({
             "window": [iso(start), iso(end)],
@@ -250,6 +260,7 @@ def compute_params(hours_map):
             "reward": reward,
             "reward_currency": currency,
             "settle_price": settle_price,
+            "avg_price": round(avg_price, 4) if avg_price else None,
             "pool_usd": round(pool_usd, 2),
             "min_deposit_avg": round(min_avg, 2),
             "utilized": round(utilized, 2),
@@ -294,9 +305,9 @@ def apply_apr(entry, params, day_min_total):
     币安按 UTC+0 00:00~24:00 内最低持仓统计当日计息基数，故同一自然日内
     所有小时点共用该日全天最低总存款（日内恒定）；当天尚未完结时，
     自然只能取当日迄今最低值，随新低出现而阶梯式更新。
-    已结算周按当周年化奖池（XRP 周 = 币数 × 结算价）与当周实际差额回算，
-    曲线与实际 APR 精确吻合；当前未结算周按 NEXT_WEEK_REWARD_XRP × 当前 XRP 价
-    （价格存于 params["xrp_price_now"]）与外推差额计算。
+    已结算周按当周年化奖池（XRP 周 = 币数 × 周日均价均值，逐日结算）与当周实际差额回算，
+    曲线与实际 APR 精确吻合；当前未结算周逐日计算：每天按其当日 XRP 均价
+    （当天取最新价），年化池 = NEXT_WEEK_REWARD_XRP × 当日价 × 365/7。
     当日最低持仓 ≤ 差额时模型失效，曲线留空。
     """
     entry.pop("apr_optimistic", None)  # 清理旧的三口径字段
@@ -309,7 +320,7 @@ def apply_apr(entry, params, day_min_total):
         pool = week["pool_usd"] * 365 / 7
         unused = week["unused"]
     else:
-        price = params.get("xrp_price_now")
+        price = params.get("_day_price", {}).get(t // 86400)
         if not price:
             entry["apr"] = None
             return entry
@@ -380,21 +391,31 @@ def apply_bybit_apr(hours_map, params, price_now):
 
 def save_data(hours_map):
     """hours_map: {ts: entry}。重算参数与 APR 后写回 data.json"""
-    params = compute_params(hours_map)
-    # 每个小时点附上 XRP/USD 价格（1h K线收盘价，批量抓取）
+    # 每个小时点附上 XRP/USD 价格（1h K线收盘价，批量抓取）——
+    # XRP 奖池周按逐日价格结算，须先于 compute_params 挂好
     if hours_map:
         prices = xrp_hourly_prices(min(hours_map), max(hours_map))
         for ts, entry in hours_map.items():
             if entry and ts in prices:
                 entry["xrp_usd"] = prices[ts]
+    params = compute_params(hours_map)
     # 最新 XRP 价格：优先数据内最新小时价，缺失时回退实时 ticker。
-    # 币安第六周奖池为 XRP 计，USD 年化池随该价格浮动
+    # 第六周奖池为 XRP 计且逐日结算，USD 年化池随价格浮动
     price_now = next((hours_map[ts]["xrp_usd"] for ts in sorted(hours_map, reverse=True)
                       if hours_map[ts] and hours_map[ts].get("xrp_usd")), None) \
         or xrp_latest_price()
     params["xrp_price_now"] = round(price_now, 4) if price_now else None
     params["annual_reward_pool"] = (round(NEXT_WEEK_REWARD_XRP * price_now * 365 / 7, 2)
                                     if price_now else None)
+    # 未结算周逐日价格：已完结日取当日小时价均值，当天取最新价
+    day_price = {}
+    for ts, entry in hours_map.items():
+        if entry and entry.get("xrp_usd"):
+            day_price.setdefault(ts // 86400, []).append(entry["xrp_usd"])
+    day_price = {d: sum(v) / len(v) for d, v in day_price.items()}
+    if day_price and price_now:
+        day_price[max(day_price)] = price_now
+    params["_day_price"] = day_price
     apply_bybit_apr(hours_map, params, price_now)
     # 先按 UTC+0 自然日汇总全天最低总存款（已完结日取全天最低，
     # 当天未完结时即为迄今最低），同一日内 APR 恒定
@@ -407,6 +428,7 @@ def save_data(hours_map):
         day_min[day] = entry["total"] if prev is None else min(prev, entry["total"])
     entries = [apply_apr(hours_map[ts], params, day_min[ts // 86400])
                for ts in sorted(hours_map) if hours_map[ts]]
+    params.pop("_day_price", None)  # 内部临时结构，不入库
     data = {
         "updated": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "params": params,
