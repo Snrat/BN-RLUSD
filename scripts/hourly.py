@@ -321,7 +321,9 @@ def apply_apr(entry, params, day_min_total):
         pool = week["pool_usd"] * 365 / 7
         unused = week["unused"]
     else:
-        price = params.get("_day_price", {}).get(t // 86400)
+        day_ts = int(datetime.strptime(t, "%Y-%m-%dT%H:00:00Z")
+                     .replace(tzinfo=timezone.utc).timestamp())
+        price = params.get("_day_price", {}).get(day_ts // 86400)
         if not price:
             entry["apr"] = None
             return entry
