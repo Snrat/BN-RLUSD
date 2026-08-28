@@ -102,7 +102,7 @@
   </div>
 
   <div class="panel">
-    <h2>RLUSD 总量 &amp; 第一~六周 APR（拟合曲线）</h2>
+    <h2>RLUSD 总量 &amp; 第一~七周 APR（拟合曲线）</h2>
     <div class="chart-box"><canvas id="chartMain"></canvas></div>
     <div class="note" id="params-note"></div>
   </div>
@@ -150,12 +150,13 @@ function render(data) {
   document.getElementById('c-time').textContent = toUTC8(last.t) + ' (UTC+8)';
 
   const p = data.params;
-  const CN = '一二三四五六';
+  const CN = '一二三四五六七八';
+  const TCN = CN[p.fit_weeks.length];  // 预测目标周
   const fmtPool = w => w.reward_currency === 'XRP'
     ? `奖池 ${fmtNum(w.reward)} XRP 逐日按当日价结算，周日均价 ${w.avg_price} ≈ $${fmtNum(w.pool_usd)}`
     : `奖池 $${fmtNum(w.reward)}`;
   document.getElementById('params-note').textContent =
-    `模型：第六周奖池未公布，暂按与第五周相同 ${fmtNum(p.next_week_reward_xrp)} XRP/周假设；` +
+    `模型：第${TCN}周奖池未公布，暂按与第五、六周相同 ${fmtNum(p.next_week_reward_xrp)} XRP/周假设；` +
     `第五周起奖池为固定 XRP 币数、按每日 XRP 价格逐日结算` +
     (p.xrp_price_now ? `（当天用实时价 $${p.xrp_price_now}，已完结日用当日均价）` : '') + `。` +
     `APR = 年化池 ÷ 利用金额。按币安规则，以 UTC+0 自然日（00:00~24:00）内最低持仓为当日计息基数，` +
@@ -165,9 +166,9 @@ function render(data) {
       `${(w.min_deposit_avg / 1e6).toFixed(1)}M → 利用 ${(w.utilized / 1e6).toFixed(1)}M，` +
       `差额 ${(w.unused / 1e6).toFixed(1)}M${w.anomaly ? '，受' + w.anomaly + '影响异常' : ''}` +
       `${w.unused < 0 ? '，为负说明合格持仓超出追踪地址' : ''}）`).join('，') + '。' +
-    `XRP 奖池周样本仅第五周，第六周差额锚定其实际值 ${(p.unused_next_week / 1e6).toFixed(1)}M（不做趋势外推），` +
+    `XRP 奖池周样本仅第五、六周，第${TCN}周差额锚定第六周实际值 ${(p.unused_next_week / 1e6).toFixed(1)}M（不做趋势外推），` +
     `利用金额 = 当日最低持仓 − 该值。` +
-    `曲线第一~五周按当周奖池与实际差额回算（与实际 APR 吻合）、第六周按假设池与锚定差额计算。` +
+    `曲线各已结算周按当周奖池与实际差额回算（与实际 APR 吻合）、第${TCN}周按假设池与锚定差额计算。` +
     `注：当日最低持仓 ≤ 差额时模型失效，曲线留空。`;
 
   Chart.defaults.color = c.text;

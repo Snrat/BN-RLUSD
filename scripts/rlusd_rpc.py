@@ -28,6 +28,8 @@ ETH_ADDRESSES = [
     "0x21a31ee1afc51d94c2efccaa2092ad1028285549",
     "0x4ed6cf63bd9c009d247ee51224fc1c7041f517f1",
     "0x98adef6f2ac8572ec48965509d69a8dd5e8bba9d",
+    "0xf977814e90da44bfa03b6295a0616a897441acec",  # Binance 8，8/15 起持有 RLUSD
+    "0x5a52e96bacdabb82fd05763e25335261b270efcb",  # 8/28 起持有 RLUSD
 ]
 XRP_ADDRESSES = [
     "rDAE53VfMvftPB4ogpWGWvzkQxfht6JPxr",

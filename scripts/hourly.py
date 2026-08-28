@@ -25,6 +25,8 @@ WEEK4_START = WEEK3_END  # 8/7 08:00 (UTC+8)
 WEEK4_END = int(datetime(2026, 8, 14, 0, 0, 0, tzinfo=timezone.utc).timestamp())  # 8/14 08:00 (UTC+8)
 WEEK5_START = WEEK4_END  # 8/14 08:00 (UTC+8)
 WEEK5_END = int(datetime(2026, 8, 21, 0, 0, 0, tzinfo=timezone.utc).timestamp())  # 8/21 08:00 (UTC+8)
+WEEK6_START = WEEK5_END  # 8/21 08:00 (UTC+8)
+WEEK6_END = int(datetime(2026, 8, 28, 0, 0, 0, tzinfo=timezone.utc).timestamp())  # 8/28 08:00 (UTC+8)
 # 已结算周的实际 APR（币安公布）。
 # 第 1~4 周奖池为每周 200,000 USD 等值 XRP；第五周起改为每周 250,000 XRP（固定币数），
 # 年化 APR 按结算时 XRP 价格折算 USD 生成。
@@ -35,9 +37,10 @@ SETTLED_WEEKS = [
     (WEEK3_START, WEEK3_END, 0.0808, 200_000, "USD", None, "夏日理财季活动"),  # 第三次分发 2026-08-07；活动推高未利用资金，趋势外推时剔除
     (WEEK4_START, WEEK4_END, 0.0769, 200_000, "USD", None, None),  # 第四次分发 2026-08-14
     (WEEK5_START, WEEK5_END, 0.0807, 250_000, "XRP", 1.2681, None),  # 第五次分发 2026-08-21，结算价 1.2681
+    (WEEK6_START, WEEK6_END, 0.0578, 250_000, "XRP", 1.4534, None),  # 第六次分发 2026-08-28，结算价 1.4534
 ]
 
-NEXT_WEEK_REWARD_XRP = 250_000.0  # 第六周奖池未公布，暂按与第五周相同 25 万 XRP/周假设，USD 价值随 XRP 价格浮动
+NEXT_WEEK_REWARD_XRP = 250_000.0  # 第七周奖池未公布，暂按与第五、六周相同 25 万 XRP/周假设，USD 价值随 XRP 价格浮动
 
 MAX_WORKERS = 3  # 并发压低 + 4 节点轮询，避免触发免费 RPC 限流
 
@@ -270,10 +273,10 @@ def compute_params(hours_map):
         })
 
     # 差额外推：剔除异常周，且只取与下一周同奖池币种（XRP）的周。
-    # 同币种周 ≥2 时按周序号最小二乘；只有 1 周（当前情形）时锚定该周实际值
+    # 同币种周 ≥3 时按周序号最小二乘；样本不足时锚定最近一周实际值
     fit = [(i + 1, w["unused"]) for i, w in enumerate(weeks)
            if not w["anomaly"] and w["reward_currency"] == "XRP"]
-    if len(fit) >= 2:
+    if len(fit) >= 3:
         xs = [x for x, _ in fit]
         vals = [u for _, u in fit]
         xm = sum(xs) / len(xs)
