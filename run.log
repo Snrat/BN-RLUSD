@@ -1,8 +1,21 @@
-更新范围: 2026-09-04T23:00:00Z ~ 2026-09-05T00:00:00Z
-需抓取 2 个小时点（2026-09-04T23:00:00Z ~ 2026-09-05T00:00:00Z）
-  进度 2/2
-  [警告] 获取 2026-08-27 XRP 日线失败: Kraken error: ['EGeneral:Too many requests']
-  [警告] 获取 2026-08-28 XRP 日线失败: Kraken error: ['EGeneral:Too many requests']
-  [警告] 获取 2026-08-29 XRP 日线失败: Kraken error: ['EGeneral:Too many requests']
-  [警告] 获取 2026-08-30 XRP 日线失败: Kraken error: ['EGeneral:Too many requests']
-已写入 /home/runner/work/BN-RLUSD/BN-RLUSD/data.json: 1273 个小时点
+更新范围: 2026-09-05T01:00:00Z ~ 2026-09-05T04:00:00Z
+需抓取 4 个小时点（2026-09-05T01:00:00Z ~ 2026-09-05T04:00:00Z）
+Traceback (most recent call last):
+  File "/home/runner/work/BN-RLUSD/BN-RLUSD/scripts/update_hourly.py", line 20, in <module>
+    hourly.fill(start, end)
+  File "/home/runner/work/BN-RLUSD/BN-RLUSD/scripts/hourly.py", line 464, in fill
+    results = fetch_hours(missing)
+              ^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/work/BN-RLUSD/BN-RLUSD/scripts/hourly.py", line 212, in fetch_hours
+    anchors = Anchors(min(timestamps))
+              ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/work/BN-RLUSD/BN-RLUSD/scripts/hourly.py", line 173, in __init__
+    l0, s0 = rpc.xrp_find_ledger_at_or_before(start_ts)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/work/BN-RLUSD/BN-RLUSD/scripts/rlusd_rpc.py", line 189, in xrp_find_ledger_at_or_before
+    if xrp_ledger_close_time(mid) <= ts:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/work/BN-RLUSD/BN-RLUSD/scripts/rlusd_rpc.py", line 178, in xrp_ledger_close_time
+    return int(r["result"]["ledger"]["close_time"]) + RIPPLE_EPOCH_OFFSET
+               ~~~~~~~~~~~^^^^^^^^^^
+KeyError: 'ledger'
