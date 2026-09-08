@@ -1,5 +1,5 @@
-更新范围: 2026-09-08T00:00:00Z ~ 2026-09-08T04:00:00Z
-需抓取 5 个小时点（2026-09-08T00:00:00Z ~ 2026-09-08T04:00:00Z）
+更新范围: 2026-09-08T00:00:00Z ~ 2026-09-08T09:00:00Z
+需抓取 10 个小时点（2026-09-08T00:00:00Z ~ 2026-09-08T09:00:00Z）
 Traceback (most recent call last):
   File "/home/runner/work/BN-RLUSD/BN-RLUSD/scripts/update_hourly.py", line 20, in <module>
     hourly.fill(start, end)
