@@ -1,9 +1,9 @@
-更新范围: 2026-09-12T13:00:00Z ~ 2026-09-12T16:00:00Z
-需抓取 4 个小时点（2026-09-12T13:00:00Z ~ 2026-09-12T16:00:00Z）
-  进度 4/4
+更新范围: 2026-09-12T17:00:00Z ~ 2026-09-12T18:00:00Z
+需抓取 2 个小时点（2026-09-12T17:00:00Z ~ 2026-09-12T18:00:00Z）
+  进度 2/2
   [警告] 获取 2026-08-26 XRP 日线失败: Kraken error: ['EGeneral:Too many requests']
   [警告] 获取 2026-08-27 XRP 日线失败: Kraken error: ['EGeneral:Too many requests']
   [警告] 获取 2026-08-28 XRP 日线失败: Kraken error: ['EGeneral:Too many requests']
   [警告] 获取 2026-08-29 XRP 日线失败: Kraken error: ['EGeneral:Too many requests']
   [警告] 获取 2026-08-30 XRP 日线失败: Kraken error: ['EGeneral:Too many requests']
-已写入 /home/runner/work/BN-RLUSD/BN-RLUSD/data.json: 1457 个小时点
+已写入 /home/runner/work/BN-RLUSD/BN-RLUSD/data.json: 1459 个小时点
